@@ -21,7 +21,9 @@ trap '[ -n "$SERVER" ] && kill $SERVER 2>/dev/null || true' EXIT
 
 build() { # version
   GAMMA_VERSION=$1 GAMMA_UPDATE_BASE="http://127.0.0.1:$PORT" GAMMA_UPDATER_PUBKEY_FILE="$KEY.pub" \
-    TAURI_SIGNING_PRIVATE_KEY_PATH="$KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" scripts/package.sh >/dev/null 2>&1
+    TAURI_SIGNING_PRIVATE_KEY_PATH="$KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" scripts/package.sh >"$WORK/build-$1.log" 2>&1 \
+    || { tail -30 "$WORK/build-$1.log"; exit 1; }
+  echo "== built $1"
 }
 
 case "$(uname -s)" in

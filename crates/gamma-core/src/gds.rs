@@ -13,6 +13,8 @@ pub type LayerKey = (u16, u16);
 #[derive(Clone, Debug, Default)]
 pub struct Library {
     pub name: String,
+    /// KLayout context properties per cell (kfactory/gdsfactory metadata).
+    pub meta: HashMap<String, Vec<String>>,
     /// Size of a database unit in metres.
     pub db_unit_m: f64,
     pub cells: Vec<Cell>,
@@ -189,6 +191,7 @@ impl Library {
             angle: f64,
             colrow: (u16, u16),
             text: String,
+            props: Vec<String>,
         }
         let mut el: Option<El> = None;
         while pos + 4 <= data.len() {
@@ -351,6 +354,12 @@ impl Library {
                         }
                         0x0A => {
                             if let Some(&o) = e.xy.first() {
+                                if !e.props.is_empty() {
+                                    lib.meta
+                                        .entry(e.sname.clone())
+                                        .or_default()
+                                        .extend(e.props.iter().cloned());
+                                }
                                 c.refs.push(CellRef {
                                     cell: e.sname,
                                     origin: o,
@@ -382,6 +391,15 @@ impl Library {
                             })
                         }
                         _ => {}
+                    }
+                }
+                0x2C => {
+                    let v = string();
+                    if v.starts_with("META('kfactory:cross_section:") {
+                        lib.meta.entry(String::new()).or_default().push(v.clone());
+                    }
+                    if let Some(e) = el.as_mut() {
+                        e.props.push(v);
                     }
                 }
                 0x04 => break,
@@ -416,6 +434,75 @@ impl Library {
             std::cmp::Reverse(c.refs.len() * 100 + c.boundaries.len() + c.paths.len())
         });
         tops.into_iter().map(|c| c.name.as_str()).collect()
+    }
+
+    /// Ports gdsfactory (kfactory) stored in the GDS context of `cell`:
+    /// `(name, x µm, y µm, width µm, orientation deg)`.
+    pub fn kfactory_ports(&self, cell: &str) -> Vec<(String, f64, f64, f64, f64)> {
+        let Some(props) = self.meta.get(cell) else {
+            return vec![];
+        };
+        let s = self.um_per_db();
+        // cross-section widths: META('kfactory:cross_section:<id>')={...'width'=>#450}
+        let mut widths: HashMap<String, f64> = HashMap::new();
+        for p in self.meta.values().flatten() {
+            if let Some(rest) = p.strip_prefix("META('kfactory:cross_section:") {
+                if let Some((id, body)) = rest.split_once("')=") {
+                    if let Some(w) = body.split("'width'=>#").nth(1) {
+                        let n: String = w.chars().take_while(|c| c.is_ascii_digit()).collect();
+                        if let Ok(v) = n.parse::<f64>() {
+                            widths.insert(id.to_string(), v * s);
+                        }
+                    }
+                }
+            }
+        }
+        let field = |body: &str, key: &str| -> Option<String> {
+            let k = format!("'{key}'=>'");
+            let i = body.find(&k)? + k.len();
+            Some(body[i..].chars().take_while(|c| *c != '\'').collect())
+        };
+        let mut out = vec![];
+        for p in props
+            .iter()
+            .filter(|p| p.starts_with("META('kfactory:ports:"))
+        {
+            let Some(name) = field(p, "name") else {
+                continue;
+            };
+            let xs = field(p, "cross_section").unwrap_or_default();
+            let width = widths.get(&xs).copied().unwrap_or(0.0);
+            // [trans:r180 0,0] (database units) or [dcplx_trans:r30 *1 1.5,2] (µm)
+            let (rot, x, y) = if let Some(t) = p.split("[trans:").nth(1) {
+                let t = t.split(']').next().unwrap_or("");
+                let mut it = t.split_whitespace();
+                let r = it.next().unwrap_or("r0");
+                let xy = it.next().unwrap_or("0,0");
+                let (a, b) = xy.split_once(',').unwrap_or(("0", "0"));
+                let ang: f64 = r.trim_start_matches(['r', 'm']).parse().unwrap_or(0.0);
+                (
+                    ang,
+                    a.parse::<f64>().unwrap_or(0.0) * s,
+                    b.parse::<f64>().unwrap_or(0.0) * s,
+                )
+            } else if let Some(t) = p.split("[dcplx_trans:").nth(1) {
+                let t = t.split(']').next().unwrap_or("");
+                let parts: Vec<&str> = t.split_whitespace().collect();
+                let ang: f64 = parts
+                    .first()
+                    .map(|r| r.trim_start_matches(['r', 'm']))
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0.0);
+                let xy = parts.last().copied().unwrap_or("0,0");
+                let (a, b) = xy.split_once(',').unwrap_or(("0", "0"));
+                (ang, a.parse().unwrap_or(0.0), b.parse().unwrap_or(0.0))
+            } else {
+                continue;
+            };
+            out.push((name, x, y, width, rot));
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 
     /// µm per database unit.

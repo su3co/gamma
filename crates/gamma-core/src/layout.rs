@@ -174,7 +174,19 @@ impl Layout {
                 let text = std::fs::read_to_string(p)?;
                 parse_ports(&text).with_context(|| format!("reading ports from {}", p.display()))?
             }
-            _ => vec![],
+            // gdsfactory files carry their ports in the GDS context
+            _ => lib
+                .kfactory_ports(&top)
+                .into_iter()
+                .map(|(name, x, y, width, orientation)| Port {
+                    name,
+                    x,
+                    y,
+                    width,
+                    orientation,
+                    layer: None,
+                })
+                .collect(),
         };
         Ok(Layout::from_flat(flat, &top, cells, ports, lib.db_unit_m))
     }
@@ -658,5 +670,20 @@ mod tests {
         assert_eq!(u32::from_le_bytes(mesh[0..4].try_into().unwrap()), 8);
         assert_eq!(u32::from_le_bytes(mesh[4..8].try_into().unwrap()), 12);
         assert_eq!(a.extrude(&s)[0].2.indices.len(), 2 * 36);
+    }
+}
+
+#[cfg(test)]
+mod kfactory_tests {
+    #[test]
+    fn ports_from_gdsfactory_gds() {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/wire/build/wire.gds");
+        let l = super::Layout::read(&p, None, None).unwrap();
+        assert_eq!(l.ports.len(), 2);
+        assert_eq!(l.ports[0].name, "o1");
+        assert!((l.ports[1].x - 5.0).abs() < 1e-9);
+        assert!((l.ports[0].orientation - 180.0).abs() < 1e-9);
+        assert!((l.ports[0].width - 0.45).abs() < 1e-9);
     }
 }

@@ -87,6 +87,11 @@ jobs:
         with:
           toolchain: "1.99.1"
       - uses: Swatinem/rust-cache@v2
+      - name: Interface and placeholder for the bundled program
+        run: |
+          (cd app/ui && npm ci && npm run build)
+          mkdir -p app/src-tauri/binaries
+          touch "app/src-tauri/binaries/gamma-$(rustc -vV | sed -n 's/^host: //p')"
       - run: cargo test --release --workspace
       - name: Unsigned app bundle
         run: scripts/package.sh

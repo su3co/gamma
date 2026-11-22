@@ -60,7 +60,7 @@ app/
                  updater with channels and rollback
   ui             the interface (TypeScript, WebGL2): viewers, panels, the agent
                  conversation; served by the hub to browsers as well
-python/gamma     a small Python helper used by project scripts: write a layout
+python/gamma_pic a small Python helper used by project scripts: write a layout
                  (GDS + ports JSON) and a simulation spec where gamma expects them
 skills/          skills shipped to agents (gamma, gdsfactory, lightsim,
                  lightsim-quantum)
@@ -156,6 +156,15 @@ launcher = ""                       # optional command prefix (a job queue)
 `stack.toml` lists layers (GDS layer and datatype, z range, material, colour,
 minimum width and spacing for the design-rule check) and materials (a
 constant index or a lightsim library name).
+
+A simulation with a `[simulation.preview]` table also has a coarse variant.
+Its script builds it when the hub runs it with `GAMMA_PREVIEW_MESH_SCALE`,
+`GAMMA_PREVIEW_RUN_TIME_SCALE` and `GAMMA_SPEC_OUT` set (`gamma_pic.mesh_scale()`
+and friends), because mode profiles belong to the grid they were solved on;
+specs without mode profiles are coarsened by the hub itself.
+
+Ports are read from the ports JSON when the project names one, else from the
+port metadata gdsfactory writes into the GDS file.
 
 ### Simulation specs and results
 

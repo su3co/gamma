@@ -10,4 +10,4 @@ mkdir -p "$HOME/.cache/gamma-docker/registry"
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/src" -v "$HOME/.cache/gamma-docker/registry:/opt/cargo/registry" \
   -v "$KEY:/keys/test.key:ro" -v "$KEY.pub:/keys/test.key.pub:ro" \
   -e GAMMA_TEST_KEY=/keys/test.key -e CARGO_TARGET_DIR=/src/target-linux -e GAMMA_CUDA=${GAMMA_CUDA:-0} -e CI=true -e HOME=/tmp \
-  "$IMAGE" xvfb-run -a scripts/test-update.sh
+  "$IMAGE" bash -c 'Xvfb :99 -screen 0 1280x1024x24 -nolisten tcp & export DISPLAY=:99; sleep 1; scripts/test-update.sh'
