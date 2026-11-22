@@ -34,6 +34,9 @@ const sims = await api(`/api/p/${opened.id}/sims`);
 const job = await api(`/api/p/${opened.id}/sims/${sims[0].name}/run`, { device: "cpu", preview: !!process.env.GAMMA_UI_PREVIEW });
 for (let i = 0; i < 600; i++) { const j = await api(`/api/jobs/${job.id}`); if (["done", "failed"].includes(j.status)) { if (j.status !== "done") throw new Error(j.error); break; } await sleep(300); }
 
+await api(`/api/p/${opened.id}/checkpoints`, { message: "First run of the fixture" });
+await api(`/api/p/${opened.id}/comments`, { text: "Transmission looks as expected for a straight wire.", object: "monitor:wire/through" });
+
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 const errors = [];
 let failed = false;
@@ -52,6 +55,12 @@ for (const theme of ["dark", "light"]) {
     if (sel !== "true") { failed = true; console.log(`FAIL ${theme} ${name}: tab not selected`); }
     await page.screenshot({ path: join(out, `${name}-${theme}.png`) });
   }
+  await page.click("header.top >> text=Settings");
+  await sleep(600);
+  await page.screenshot({ path: join(out, `settings-${theme}.png`) });
+  await page.keyboard.press("Escape");
+  await page.click(".modal", { position: { x: 5, y: 5 } }).catch(() => {});
+  await sleep(200);
   // select a port from the tree and check the inspector follows
   await page.keyboard.press("1");
   await page.click("nav.tree >> text=o1");

@@ -33,7 +33,7 @@ export class HistoryView {
       el("td", { class: "num" }, String(c.n)),
       el("td", {}, c.message),
       el("td", { class: "muted" }, c.actor.startsWith("agent:") ? "agent" : c.actor),
-      el("td", { class: "num muted" }, (c.time || "").replace("T", " ").slice(0, 16)),
+      el("td", { class: "num muted" }, utc(c.time)),
       el("td", {}, el("label", { class: "small" }, el("input", { type: "radio", name: "ck-a", checked: this.a === c.n, onchange: () => { this.a = c.n; this.diff(); } }), " A"), " ",
         el("label", { class: "small" }, el("input", { type: "radio", name: "ck-b", checked: this.b === c.n, onchange: () => { this.b = c.n; this.diff(); } }), " B"))));
     this.root.replaceChildren(
@@ -46,7 +46,7 @@ export class HistoryView {
       el("h2", {}, "Review comments"),
       el("div", { style: { display: "flex", gap: "14px", alignItems: "center", flexWrap: "wrap", marginBottom: "10px" } }, comment, el("button", { class: "link accent", onclick: addComment }, "Add comment")),
       ...([...v.comments].reverse().map((c: any) => el("div", { style: { margin: "8px 0" } },
-        el("div", { class: "small muted mono" }, `${(c.time || "").replace("T", " ").slice(0, 16)} · ${c.actor.startsWith("agent:") ? "agent" : c.actor}${c.object ? " · " + c.object : ""}${c.checkpoint ? " · checkpoint " + c.checkpoint : ""}`),
+        el("div", { class: "small muted mono" }, `${utc(c.time)} · ${c.actor.startsWith("agent:") ? "agent" : c.actor}${c.object ? " · " + c.object : ""}${c.checkpoint ? " · checkpoint " + c.checkpoint : ""}`),
         el("div", { class: "serif" }, c.text)))));
     if (this.a !== null) this.diff();
   }
@@ -68,4 +68,11 @@ export class HistoryView {
         el("table", { class: "data" }, el("tr", {}, el("th", {}, "Metric"), el("th", {}, "A"), el("th", {}, "B"), el("th", {}, "Change")),
           ...r.metrics.filter((m: any) => !m.metric.startsWith("run.")).map((m: any) => el("tr", {}, el("td", { class: "mono small" }, m.metric), el("td", { class: "num" }, fmt(m.before, 4)), el("td", { class: "num" }, fmt(m.after, 4)), el("td", { class: "num" }, fmt(m.change, 4))))))));
   }
+}
+
+/** "2026-11-22 23:14" in UTC from any ISO time with an offset. */
+function utc(t: string | undefined): string {
+  if (!t) return "";
+  const d = new Date(t);
+  return isNaN(d.getTime()) ? t : d.toISOString().replace("T", " ").slice(0, 16);
 }
