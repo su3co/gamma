@@ -1,8 +1,0 @@
-Metadata-Version: 2.4
-Name: gamma-pic
-Version: 0.1.0
-Summary: Helpers for gamma project scripts: write layouts (GDS + ports) and lightsim simulation specs where gamma expects them
-License-Expression: MIT
-Requires-Python: >=3.10
-Provides-Extra: gdsfactory
-Requires-Dist: gdsfactory>=9; extra == "gdsfactory"

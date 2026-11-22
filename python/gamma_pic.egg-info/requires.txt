@@ -1,3 +1,0 @@
-
-[gdsfactory]
-gdsfactory>=9
