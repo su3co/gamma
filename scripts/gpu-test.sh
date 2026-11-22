@@ -15,7 +15,8 @@ $G worker info | python3 -c "
 import json,sys; h=json.loads(sys.stdin.read())
 print(f\"gamma {h['version']}, lightsim {h['lightsim'][:10]}, {h['host_arch']}, {h['precision']}\")
 for d in h['devices']: print(f\"- {d['id']}: {d['name']}\")"
-GPUS=$($G worker info | python3 -c "import json,sys; print(' '.join(d['id'] for d in json.loads(sys.stdin.read())['devices'] if d['id'].startswith('cuda')))")
+GPUS=${GAMMA_GPUS:-}
+[ -n "$GPUS" ] || GPUS=$($G worker info | python3 -c "import json,sys; print(' '.join(d['id'] for d in json.loads(sys.stdin.read())['devices'] if d['id'].startswith('cuda')))")
 [ -n "$GPUS" ] || { echo "no CUDA GPU found"; exit 1; }
 run() { $G worker run "$1" --device "$2" --out "$3" --slice none > "$3.log"; tail -1 "$3.log"; }
 echo

@@ -68,6 +68,7 @@ Cancelling stops the remote worker.
 
 | Host GPU | Simulation | Cells | Rate |
 |---|---|---|---|
+| RTX PRO 6000 (x86_64) | MMI splitter, full mesh | 4.6 M | 15.0 Gcells/s, 2.8 s solver time |
 | GB10 (aarch64) | MMI splitter, full mesh | 4.6 M | 2.39 Gcells/s, 17.4 s solver time |
 
 Records: [test-runs/](test-runs/).

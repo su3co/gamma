@@ -108,7 +108,8 @@ pub fn render(
             let mut overlays = vec![];
             for o in summary.objects.iter().filter(|o| o.kind != "structure") {
                 // objects that cross the plane
-                if o.min[axis] > sl.coord + 1e-12 || o.max[axis] < sl.coord - 1e-12 {
+                let tol = 0.75 * summary.grid.max_cell[axis];
+                if o.min[axis] > sl.coord + tol || o.max[axis] < sl.coord - tol {
                     continue;
                 }
                 let color: Rgb = if o.kind == "source" {

@@ -68,8 +68,49 @@ of its turn is a checkpoint you can compare in History.
 
 The worked examples published with lightsim (Mach–Zehnder modulator, ring
 sensor, grating coupler, quantum circuits…) are gdsfactory designs with
-lightsim simulation scripts. To open one in gamma, add a `gamma.toml` to a
-copy of its folder: `[layout]` pointing at the example's GDS and a
-`[[simulation]]` whose generator writes the spec with
-`gamma_pic.write_sim(build(...), "name")` from the example's `simulate.py`
-builder.
+lightsim simulation scripts, and open in gamma with three small files next to
+them. For the ring sensor (`s2-ring-sensor`):
+
+`gamma.toml`
+
+```toml
+[project]
+name = "Ring sensor"
+
+[layout]
+gds = "gds/s2-ring-sensor.gds"      # ports come from the gdsfactory metadata in the file
+stack = "stack.toml"
+
+[[simulation]]
+name = "ringdown"
+spec = "build/sims/ringdown.json"
+generator = "sims/ringdown.py"
+
+[simulation.preview]
+mesh_scale = 2.0
+run_time_scale = 0.5
+```
+
+`stack.toml`: the 220 nm silicon core on layer 1/0, oxide below, water
+above. `sims/ringdown.py`: the example's own builder, written as a spec.
+
+```python
+import lightsim as ls
+from lightsim.spec import nm
+import simulate as S
+from gamma_pic import mesh_scale, run_time_scale, write_sim
+
+k = mesh_scale()
+sim = S.build(1.333, [20 * nm * k, 20 * nm * k, 22 * nm * k], 1.0e-12 * run_time_scale())
+sim.add_source(ls.PointDipole(S.DIPOLE, "Ey", ls.GaussianPulse(S.F0, 0.06 * S.F0), amplitude=1e-12, name="dipole"))
+sim.add_monitor(ls.ProbeMonitor("ring", S.PROBE, ["Ey"]))
+sim.add_monitor(ls.DFTMonitor("core", [S.XLO, S.YLO, 0.5 * S.T], [S.XHI, S.YHI, 0.5 * S.T], [S.F0]))
+write_sim(sim, "ringdown")
+```
+
+The full simulation is 46.7 M cells (a GPU job, about 2 GB); the preview,
+7.9 M cells, took 3 minutes on an Apple M1 Pro.
+
+| | |
+|---|---|
+| ![Ring sensor layout](img/ring-layout-light.png) | ![Ring sensor set-up](img/ring-setup-dark.png) |

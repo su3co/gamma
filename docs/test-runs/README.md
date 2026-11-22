@@ -9,4 +9,5 @@ are named by model.
 | 2026-11-22 | Update flow, macOS arm64 | [update-macos](2026-11-22-update-macos.md) |
 | 2026-11-22 | Linux packages (x86_64, aarch64), .deb install, AppImage update flow | [linux-packages-and-update](2026-11-22-linux-packages-and-update.md) |
 | 2026-11-22 | GB10: GPU vs CPU, throughput, remote run from a hub | [gpu-gb10](2026-11-22-gpu-gb10.md) |
+| 2026-11-22 | RTX PRO 6000: remote run from a Mac hub through a job queue | [gpu-rtx-pro-6000](2026-11-22-gpu-rtx-pro-6000.md) |
 | 2026-11-22 | Claude Code driving gamma through MCP | [agent-mcp](2026-11-22-agent-mcp.md) |

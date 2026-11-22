@@ -84,9 +84,10 @@ export class SetupView {
     if (sm) {
       const r = sm.region;
       ov.push({ min: [r[0][a0] * 1e6, r[0][a1] * 1e6], max: [r[1][a0] * 1e6, r[1][a1] * 1e6], label: "region (absorbing layers outside)", color: css("--ink-3"), dashed: true });
+      const tol = 0.75 * sm.grid.max_cell[this.axis]; // objects within a cell of the plane
       for (const o of sm.objects) {
         if (o.kind === "structure") continue;
-        if (o.min[this.axis] > s.coord + 1e-12 || o.max[this.axis] < s.coord - 1e-12) continue;
+        if (o.min[this.axis] > s.coord + tol || o.max[this.axis] < s.coord - tol) continue;
         ov.push({ min: [o.min[a0] * 1e6, o.min[a1] * 1e6], max: [o.max[a0] * 1e6, o.max[a1] * 1e6], label: o.name, color: o.kind === "source" ? css("--source") : css("--monitor"), ref: o.reference });
       }
     }
