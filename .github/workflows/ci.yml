@@ -34,6 +34,8 @@ jobs:
       - name: Interface (the shell embeds it)
         working-directory: app/ui
         run: npm ci && npm run build
+      - name: Placeholder for the bundled program (tauri-build checks externalBin exists)
+        run: mkdir -p app/src-tauri/binaries && touch "app/src-tauri/binaries/gamma-$(rustc -vV | sed -n 's/^host: //p')"
       - run: cargo fmt --all --check
       - run: cargo clippy --release --workspace --all-targets -- -D warnings
       - run: cargo test --release --workspace
@@ -76,7 +78,7 @@ jobs:
     name: macOS build and tests (Apple silicon)
     # macOS minutes are expensive on private repositories: main and manual runs only
     if: github.event_name != 'pull_request'
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master

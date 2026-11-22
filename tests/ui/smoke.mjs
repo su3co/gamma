@@ -15,8 +15,10 @@ const root = resolve(new URL("../..", import.meta.url).pathname);
 const out = resolve(process.argv[2] || join(root, "target", "ui-smoke"));
 mkdirSync(out, { recursive: true });
 const work = mkdtempSync(join(tmpdir(), "gamma-ui-"));
-const project = join(work, "wire");
-cpSync(join(root, "tests/fixtures/wire"), project, { recursive: true });
+// GAMMA_UI_PROJECT: another (built) project to capture instead of the fixture
+const src = process.env.GAMMA_UI_PROJECT || join(root, "tests/fixtures/wire");
+const project = join(work, "project");
+cpSync(src, project, { recursive: true, filter: (p) => !p.includes("/.gamma/local") && !p.includes("/results/") });
 const env = { ...process.env, GAMMA_RUNTIME_DIR: join(work, "rt"), GAMMA_DATA_DIR: join(work, "data"), GAMMA_CONFIG_DIR: join(work, "cfg") };
 const gamma = join(root, "target/release/gamma");
 const hub = spawn(gamma, ["hub", "--port", "0", "--ui", join(root, "app/ui/dist")], { env, stdio: "ignore" });
@@ -28,7 +30,8 @@ const base = `http://127.0.0.1:${info.port}`;
 const api = (p, body) => fetch(base + p, { method: body ? "POST" : "GET", headers: { Authorization: `Bearer ${info.token}`, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }).then((r) => r.json());
 const opened = await api("/api/open", { path: project });
 // one finished run so the results view has data
-const job = await api(`/api/p/${opened.id}/sims/wire/run`, { device: "cpu" });
+const sims = await api(`/api/p/${opened.id}/sims`);
+const job = await api(`/api/p/${opened.id}/sims/${sims[0].name}/run`, { device: "cpu", preview: !!process.env.GAMMA_UI_PREVIEW });
 for (let i = 0; i < 600; i++) { const j = await api(`/api/jobs/${job.id}`); if (["done", "failed"].includes(j.status)) { if (j.status !== "done") throw new Error(j.error); break; } await sleep(300); }
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
@@ -51,7 +54,7 @@ for (const theme of ["dark", "light"]) {
   }
   // select a port from the tree and check the inspector follows
   await page.keyboard.press("1");
-  await page.click("text=o1");
+  await page.click("nav.tree >> text=o1");
   await sleep(300);
   const ref = await page.textContent(".inspector .ref");
   if (ref?.trim() !== "port:o1") { failed = true; console.log(`FAIL ${theme}: inspector shows ${ref}`); }

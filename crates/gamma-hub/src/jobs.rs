@@ -48,6 +48,8 @@ pub struct Job {
     pub progress: Option<Value>,
     pub error: Option<String>,
     pub log: Vec<String>,
+    /// (step, energy / peak) samples for the decay plot.
+    pub decay: Vec<(usize, f64)>,
     #[serde(skip)]
     pub last_slice: Option<Value>,
     #[serde(skip)]
@@ -178,6 +180,7 @@ impl Jobs {
             progress: None,
             error: None,
             log: vec![],
+            decay: vec![],
             last_slice: None,
             cancel: Some(tx),
         };
@@ -482,7 +485,14 @@ impl Jobs {
                         }
                         Some(Msg::Progress { step, steps, elapsed, decay, mcells_per_s }) => {
                             let v = json!({"step": step, "steps": steps, "elapsed": elapsed, "decay": decay, "mcells_per_s": mcells_per_s});
-                            self.update(jid, |j| j.progress = Some(v.clone()));
+                            self.update(jid, |j| {
+                                j.progress = Some(v.clone());
+                                if let Some(d) = decay {
+                                    if j.decay.len() < 5000 {
+                                        j.decay.push((step, d));
+                                    }
+                                }
+                            });
                             ps.log.ephemeral("hub", "sim.progress", json!({"job": jid, "progress": v}));
                         }
                         Some(Msg::Slice(s)) => {

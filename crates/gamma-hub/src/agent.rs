@@ -20,6 +20,33 @@ Edit the project's text files (gdsfactory Python or YAML, stack.toml, simulation
 References such as port:o1, poly:1/0#3, monitor:sim/name or point:x,y name objects the person selected; use selection_get for details. \
 Prefer a quick preview run (preview: true) or the CPU for small checks and a GPU or remote host for full runs, and state estimated run times before long runs.";
 
+/// The skills gamma ships to agents (installed into the project's `.claude/skills/`).
+pub const SKILLS: [(&str, &str); 4] = [
+    ("gamma", include_str!("../../../skills/gamma/SKILL.md")),
+    (
+        "gdsfactory-pic",
+        include_str!("../../../skills/gdsfactory-pic/SKILL.md"),
+    ),
+    (
+        "lightsim-fdtd",
+        include_str!("../../../skills/lightsim-fdtd/SKILL.md"),
+    ),
+    (
+        "lightsim-quantum",
+        include_str!("../../../skills/lightsim-quantum/SKILL.md"),
+    ),
+];
+
+pub fn install_skills(root: &Path) -> Result<()> {
+    for (name, text) in SKILLS {
+        gamma_core::fsutil::atomic_write(
+            &root.join(".claude/skills").join(name).join("SKILL.md"),
+            text.as_bytes(),
+        )?;
+    }
+    Ok(())
+}
+
 pub struct Session {
     pub provider: String,
     pub id: String,

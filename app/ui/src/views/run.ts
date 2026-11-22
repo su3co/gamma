@@ -28,8 +28,8 @@ export class RunView {
       el("p", { class: "lede" }, "Simulations queue per device; each host runs one job at a time. Progress, the energy decay that ends a run, and a field plane arrive about once a second."),
       this.head,
       el("div", { class: "grid2", style: { marginTop: "14px" } },
-        el("div", { class: "figure tall" }, el("div", { class: "cap" }, "Live field"), mapCanvas),
-        el("div", { class: "figure tall" }, el("div", { class: "cap" }, "Field energy / peak"), plotCanvas)),
+        el("div", { class: "figure", style: { gridColumn: "1 / -1", height: "320px" } }, el("div", { class: "cap" }, "Live field"), mapCanvas),
+        el("div", { class: "figure", style: { gridColumn: "1 / -1", height: "240px" } }, el("div", { class: "cap" }, "Field energy / peak"), plotCanvas)),
       el("h2", {}, "Jobs"), this.list,
     );
     store.on("jobs", () => this.render());
@@ -83,12 +83,14 @@ export class RunView {
     const j = store.jobs.find((x) => x.id === this.job);
     if (!j) { this.head.replaceChildren(); return; }
     const p = j.progress, plan = j.plan;
-    const frac = p ? p.step / Math.max(p.steps, 1) : 0;
-    const eta = p && p.mcells_per_s && plan ? (plan.cells * (p.steps - p.step)) / (p.mcells_per_s * 1e6) : null;
+    const finished = j.status === "done";
+    const frac = finished ? 1 : p ? p.step / Math.max(p.steps, 1) : 0;
+    const eta = !finished && p && p.mcells_per_s && plan ? (plan.cells * (p.steps - p.step)) / (p.mcells_per_s * 1e6) : null;
+    const early = finished && p && p.step < p.steps;
     const showLog = el("button", { class: "link small", onclick: () => { this.logBox.style.display = this.logBox.style.display === "none" ? "block" : "none"; } }, "Log");
     this.head.replaceChildren(
       el("div", { style: { display: "flex", alignItems: "baseline", gap: "18px", flexWrap: "wrap" } },
-        el("span", { class: "big" }, `${(frac * 100).toFixed(0)}%`),
+        el("span", { class: "big" }, finished ? "Done" : `${(frac * 100).toFixed(0)}%`),
         el("span", { style: { font: "700 17px var(--sans)" } }, `${j.sim}${j.preview ? " · preview" : ""}`),
         el("span", { class: "muted" }, j.host ? `on ${j.host} · ${j.device}` : `on this machine · ${j.device}`),
         el("span", { class: `pill ${j.status}` }, j.status),
@@ -97,15 +99,16 @@ export class RunView {
         showLog),
       el("div", { class: "bar", style: { margin: "10px 0" } }, el("div", { style: { width: `${frac * 100}%` } })),
       el("div", { class: "stats" },
-        stat("Step", p ? `${p.step} / ${p.steps}` : "–"),
+        stat("Step", p ? `${p.step} / ${p.steps}${early ? " (shut off)" : ""}` : "–"),
         stat("Decay", p?.decay ? p.decay.toExponential(1) : "–"),
         stat("Throughput", p?.mcells_per_s ? `${fmt(p.mcells_per_s / 1000, 2)} Gcells/s` : "–"),
         stat("Elapsed", p ? fmtTime(p.elapsed) : "–"),
-        stat("Remaining", eta !== null ? `≤ ${fmtTime(eta)}` : "–"),
+        finished ? "" : stat("Remaining", eta !== null ? `≤ ${fmtTime(eta)}` : "–"),
         stat("Cells", plan ? `${fmt(plan.cells / 1e6, 2)} M` : "–"),
         stat("Memory", plan ? fmtBytes(plan.memory_bytes) : "–")),
       j.error ? el("p", { class: "serif", style: { color: "var(--err)", whiteSpace: "pre-wrap" } }, j.error) : "",
       this.logBox);
+    if (j.decay?.length && !(this.decay.get(j.id)?.t.length)) this.decay.set(j.id, { t: j.decay.map((x: number[]) => x[0]), d: j.decay.map((x: number[]) => x[1]) });
     const d = this.decay.get(j.id);
     this.plot.set(d && d.t.length ? { x: d.t, series: [{ name: "energy / peak", y: d.d }], xlabel: "step", ylabel: "", logY: true } : null);
   }

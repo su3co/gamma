@@ -749,6 +749,7 @@ fn project_command(cli: &Cli) -> Result<()> {
 
 fn agent_setup(root: &Path, provider: &str) -> Result<()> {
     let exe = std::env::current_exe()?;
+    gamma_hub::agent::install_skills(root)?;
     match provider {
         "claude" => {
             let path = root.join(".mcp.json");
