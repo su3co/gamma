@@ -1,0 +1,11 @@
+/target
+node_modules/
+/app/ui/dist/
+/app/src-tauri/gen/
+/app/src-tauri/binaries/
+/dist/
+*.pyc
+__pycache__/
+.venv/
+.DS_Store
+/scratch/

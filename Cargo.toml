@@ -1,0 +1,72 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gamma-core",
+    "crates/gamma-sim",
+    "crates/gamma-quantum",
+    "crates/gamma-render",
+    "crates/gamma-hub",
+    "crates/gamma-cli",
+    # "app/src-tauri",  (added when the shell exists)
+]
+default-members = [
+    "crates/gamma-core",
+    "crates/gamma-sim",
+    "crates/gamma-quantum",
+    "crates/gamma-render",
+    "crates/gamma-hub",
+    "crates/gamma-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["SU3 Labs"]
+repository = "https://github.com/su3co/gamma"
+rust-version = "1.99"
+
+[workspace.dependencies]
+gamma-core = { path = "crates/gamma-core" }
+gamma-sim = { path = "crates/gamma-sim" }
+gamma-quantum = { path = "crates/gamma-quantum" }
+gamma-render = { path = "crates/gamma-render" }
+gamma-hub = { path = "crates/gamma-hub" }
+lightsim-core = { git = "https://github.com/su3co/lightsim", rev = "4ed0d651c9b8bf96796bffb3df60040654d8220b" }
+lightsim-cuda = { git = "https://github.com/su3co/lightsim", rev = "4ed0d651c9b8bf96796bffb3df60040654d8220b" }
+cuda-core = { git = "https://github.com/NVIDIA/cuda-rust.git", rev = "8046b9e9d696d5ea8e7c068d73061bf8b9b64f64" }
+num-complex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+toml = "0.8"
+anyhow = "1"
+thiserror = "2"
+base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"
+earcutr = "0.4"
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+notify = "8"
+tiny-skia = "0.11"
+ab_glyph = "0.2"
+clap = { version = "4", features = ["derive"] }
+rand = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+futures = "0.3"
+dirs = "6"
+time = { version = "0.3", features = ["formatting", "macros"] }
+rayon = "1.10"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 8
+strip = "debuginfo"
+
+[profile.dev.package."*"]
+opt-level = 2
