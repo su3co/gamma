@@ -1,0 +1,23 @@
+[project]
+name = "MMI splitter"
+description = "A 1x2 multimode-interference splitter on 220 nm SOI (gdsfactory generic PDK) and its 3-D FDTD transmission with lightsim."
+
+[python]
+interpreter = "python3"
+
+[layout]
+gds = "build/mmi.gds"
+generator = "layout/mmi.py"
+ports = "build/mmi.ports.json"
+stack = "stack.toml"
+
+[[simulation]]
+name = "through"
+description = "Fundamental TE mode into o1; transmitted modes at o2 and o3 and the reflection at o1, 1.50-1.60 um."
+spec = "build/sims/through.json"
+generator = "sims/through.py"
+device = "cpu"
+
+[simulation.preview]
+mesh_scale = 1.6
+run_time_scale = 1.0

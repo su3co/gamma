@@ -338,7 +338,8 @@ impl Library {
     /// Cells that no other cell references, largest first (by element count).
     pub fn top_cells(&self) -> Vec<&str> {
         let mut referenced = std::collections::HashSet::new();
-        for c in &self.cells {
+        // KLayout's context cell ($$$CONTEXT_INFO$$$) references every cell
+        for c in self.cells.iter().filter(|c| !c.name.starts_with("$$$")) {
             for r in &c.refs {
                 referenced.insert(r.cell.as_str());
             }

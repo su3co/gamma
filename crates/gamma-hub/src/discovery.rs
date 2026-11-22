@@ -72,13 +72,18 @@ pub fn alive(info: &HubInfo) -> bool {
 
 /// The running hub, or a new one started from `program hub --detach`.
 pub fn connect_or_spawn(program: &std::path::Path) -> Result<HubInfo> {
+    connect_or_spawn_with(program, &[])
+}
+
+/// As [`connect_or_spawn`], passing extra arguments to a new hub (e.g. `--idle-exit-min 30`).
+pub fn connect_or_spawn_with(program: &std::path::Path, args: &[&str]) -> Result<HubInfo> {
     if let Some(i) = read_hub_info() {
         if alive(&i) {
             return Ok(i);
         }
     }
     let mut cmd = std::process::Command::new(program);
-    cmd.arg("hub").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    cmd.arg("hub").args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;

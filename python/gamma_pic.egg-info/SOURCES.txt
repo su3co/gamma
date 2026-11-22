@@ -1,0 +1,7 @@
+pyproject.toml
+gamma_pic/__init__.py
+gamma_pic.egg-info/PKG-INFO
+gamma_pic.egg-info/SOURCES.txt
+gamma_pic.egg-info/dependency_links.txt
+gamma_pic.egg-info/requires.txt
+gamma_pic.egg-info/top_level.txt

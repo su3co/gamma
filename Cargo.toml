@@ -7,7 +7,7 @@ members = [
     "crates/gamma-render",
     "crates/gamma-hub",
     "crates/gamma-cli",
-    # "app/src-tauri",  (added when the shell exists)
+    "app/src-tauri",
 ]
 default-members = [
     "crates/gamma-core",

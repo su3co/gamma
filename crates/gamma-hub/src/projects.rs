@@ -136,8 +136,16 @@ impl ProjectState {
         }
         let mut sim = gamma_sim::setup::load(&path)?;
         if preview {
-            let pv = cfg.preview.clone().unwrap_or(gamma_core::project::PreviewCfg { mesh_scale: 2.0, run_time_scale: 1.0 });
-            sim = gamma_sim::setup::preview(&sim, pv.mesh_scale, pv.run_time_scale);
+            let built = p.path(&preview_spec_rel(&cfg.spec));
+            let fresh = built.is_file() && std::fs::metadata(&built).and_then(|m| m.modified()).ok() >= std::fs::metadata(&path).and_then(|m| m.modified()).ok().map(|t| t - std::time::Duration::from_secs(600));
+            if fresh {
+                sim = gamma_sim::setup::load(&built)?;
+            } else if has_mode_profiles(&sim) {
+                bail!("simulation {name} solves port modes on its grid, so its preview must be built by its script with a coarser mesh: add [simulation.preview] to gamma.toml and build (the script reads gamma_pic.mesh_scale())");
+            } else {
+                let pv = cfg.preview.clone().unwrap_or(gamma_core::project::PreviewCfg { mesh_scale: 2.0, run_time_scale: 1.0 });
+                sim = gamma_sim::setup::preview(&sim, pv.mesh_scale, pv.run_time_scale);
+            }
         }
         let sim = Arc::new(sim);
         self.cache.lock().unwrap().sims.insert((name.to_string(), preview), sim.clone());
@@ -146,12 +154,19 @@ impl ProjectState {
 
     /// Run a generator script with the project's interpreter.
     pub async fn run_generator(&self, script: &str, actor: &str, what: &str) -> Result<Value> {
+        self.run_generator_env(script, actor, what, &[]).await
+    }
+
+    pub async fn run_generator_env(&self, script: &str, actor: &str, what: &str, env: &[(String, String)]) -> Result<Value> {
         let p = self.snapshot();
         let py = p.python();
         let t0 = std::time::Instant::now();
         self.log.push(actor, "build.started", json!({"target": what, "script": script}));
         let mut cmd = tokio::process::Command::new(&py);
         cmd.arg(script).current_dir(&p.root).env("GAMMA_PROJECT", &p.root).env("PYTHONUNBUFFERED", "1").kill_on_drop(true);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
         let out = tokio::time::timeout(std::time::Duration::from_secs(1800), cmd.output())
             .await
             .map_err(|_| anyhow::anyhow!("{script} did not finish within 30 minutes"))?
@@ -185,6 +200,16 @@ impl ProjectState {
             if target == "all" || target == format!("sim:{}", s.name) {
                 if let Some(g) = &s.generator {
                     out.push(self.run_generator(g, actor, &format!("sim:{}", s.name)).await?);
+                    if let Some(pv) = &s.preview {
+                        // the coarse variant, built by the script itself (mode profiles
+                        // belong to the grid they were solved on)
+                        let env = vec![
+                            ("GAMMA_PREVIEW_MESH_SCALE".to_string(), pv.mesh_scale.to_string()),
+                            ("GAMMA_PREVIEW_RUN_TIME_SCALE".to_string(), pv.run_time_scale.to_string()),
+                            ("GAMMA_SPEC_OUT".to_string(), preview_spec_rel(&s.spec)),
+                        ];
+                        out.push(self.run_generator_env(g, actor, &format!("sim:{} (preview)", s.name), &env).await?);
+                    }
                 }
             }
         }
@@ -275,6 +300,20 @@ impl ProjectState {
             "layout_error": self.cache.lock().unwrap().layout_error,
         })
     }
+}
+
+/// Where a script writes the preview variant of a spec: `x.json` -> `x.preview.json`.
+pub fn preview_spec_rel(spec: &str) -> String {
+    match spec.strip_suffix(".json") {
+        Some(b) => format!("{b}.preview.json"),
+        None => format!("{spec}.preview"),
+    }
+}
+
+pub fn has_mode_profiles(sim: &Simulation) -> bool {
+    use gamma_sim::lightsim_core::monitors::Monitor;
+    use gamma_sim::lightsim_core::sources::Source;
+    sim.sources.iter().any(|s| matches!(s, Source::Mode { .. })) || sim.monitors.iter().any(|m| matches!(m, Monitor::Mode { .. }))
 }
 
 /// Files of the project for the tree (skipping build outputs, caches and git).

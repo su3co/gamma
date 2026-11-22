@@ -294,9 +294,11 @@ impl Jobs {
         let cmd = match &h.launcher {
             Some(l) if l.contains("{host}") => {
                 // a local wrapper that reaches the host itself (a queue helper)
-                let line = l.replace("{host}", &h.ssh).replace("{gpus}", &gpus).replace("{label}", &label);
-                let mut parts: Vec<String> = shell_split(&line);
-                parts.push(worker_cmd.clone());
+                // placeholders are filled after splitting, so values may contain spaces
+                let mut parts: Vec<String> = shell_split(l).into_iter().map(|t| t.replace("{host}", &h.ssh).replace("{gpus}", &gpus).replace("{label}", &label)).collect();
+                // the wrapper quotes each argument for the host's shell: hand it
+                // one `bash -c` so `~` and quoting in the worker command work
+                parts.extend(["bash".to_string(), "-c".to_string(), worker_cmd.clone()]);
                 let mut c = tokio::process::Command::new(&parts[0]);
                 c.args(&parts[1..]);
                 c

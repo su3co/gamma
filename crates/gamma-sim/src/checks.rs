@@ -31,16 +31,19 @@ pub fn check(name: &str, sim: &Simulation, layout: Option<&Layout>, stack: Optio
     let fmax = sim.sources.iter().filter_map(|s| s.signal().freq0()).fold(0.0, f64::max);
     if fmax > 0.0 {
         let nmax = media.iter().map(|m| m.eps.iter().cloned().fold(1.0, f64::max).sqrt()).fold(1.0, f64::max);
-        let lam_min = c / fmax / nmax;
+        let nbg = media.iter().find(|m| m.name == sim.background).map(|m| m.eps.iter().cloned().fold(1.0, f64::max).sqrt()).unwrap_or(1.0);
+        let lam0 = c / fmax;
         let n = grid.n();
         for a in 0..3 {
             if sim.invariant() == Some(a) {
                 continue;
             }
+            let dmin = (0..n[a]).map(|i| grid.cell_size(a, i)).fold(f64::INFINITY, f64::min);
             let dmax = (0..n[a]).map(|i| grid.cell_size(a, i)).fold(0.0, f64::max);
-            let ppw = lam_min / dmax;
+            // the finest cells sit in the densest medium (graded meshes); the coarsest in the background
+            let ppw = (lam0 / (nmax * dmin)).min(lam0 / (nbg * dmax));
             if ppw < 8.0 {
-                out.push(Finding::new(Severity::Warning, "sim.mesh_resolution", format!("simulation {name}: only {ppw:.1} cells per wavelength in the densest medium along {} (n = {nmax:.2}); results may be inaccurate below 10-15", ["x", "y", "z"][a])).on(&obj));
+                out.push(Finding::new(Severity::Warning, "sim.mesh_resolution", format!("simulation {name}: about {ppw:.1} cells per wavelength along {} (n = {nmax:.2} in the densest medium); results may be inaccurate below 10-15", ["x", "y", "z"][a])).on(&obj));
             }
         }
         for a in 0..3 {
@@ -51,8 +54,8 @@ pub fn check(name: &str, sim: &Simulation, layout: Option<&Layout>, stack: Optio
                 }
                 let i = if side == 0 { 0 } else { n[a] - 1 };
                 let thick = layers as f64 * grid.cell_size(a, i);
-                if thick < 0.5 * c / fmax {
-                    out.push(Finding::new(Severity::Info, "sim.pml_thin", format!("simulation {name}: the absorbing layer on the {} {} side is {:.2} um, less than half a free-space wavelength", if side == 0 { "low" } else { "high" }, ["x", "y", "z"][a], thick * 1e6)).on(&obj));
+                if thick < 0.25 * c / fmax {
+                    out.push(Finding::new(Severity::Info, "sim.pml_thin", format!("simulation {name}: the absorbing layer on the {} {} side is {:.2} um, less than a quarter of a free-space wavelength", if side == 0 { "low" } else { "high" }, ["x", "y", "z"][a], thick * 1e6)).on(&obj));
                 }
             }
         }
