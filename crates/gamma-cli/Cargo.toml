@@ -1,7 +1,36 @@
 [package]
 name = "gamma-cli"
+description = "gamma: the `gamma` program (hub, MCP server, worker and project commands)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "gamma"
+path = "src/main.rs"
+
+[features]
+default = []
+cuda = ["gamma-sim/cuda", "gamma-hub/cuda"]
 
 [dependencies]
+gamma-core.workspace = true
+gamma-sim.workspace = true
+gamma-hub.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+rand.workspace = true
+base64.workspace = true
+hex.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

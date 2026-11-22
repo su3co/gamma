@@ -17,6 +17,7 @@ pub mod fsutil;
 pub mod gds;
 pub mod geom;
 pub mod layout;
+pub mod netlist;
 pub mod project;
 pub mod refs;
 pub mod stack;

@@ -1,7 +1,13 @@
 [package]
 name = "gamma-quantum"
+description = "gamma: integration point for lightsim-quantum (circuits of quantum light)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
