@@ -41,7 +41,9 @@ fn default_python() -> String {
 
 impl Default for PythonCfg {
     fn default() -> Self {
-        PythonCfg { interpreter: default_python() }
+        PythonCfg {
+            interpreter: default_python(),
+        }
     }
 }
 
@@ -132,7 +134,9 @@ pub struct Project {
 impl Project {
     /// Open the project whose root is `dir` or one of its parents.
     pub fn discover(dir: &Path) -> Result<Project> {
-        let dir = dir.canonicalize().with_context(|| format!("no such folder: {}", dir.display()))?;
+        let dir = dir
+            .canonicalize()
+            .with_context(|| format!("no such folder: {}", dir.display()))?;
         let mut cur: Option<&Path> = Some(&dir);
         while let Some(d) = cur {
             if d.join(MANIFEST).is_file() {
@@ -140,28 +144,55 @@ impl Project {
             }
             cur = d.parent();
         }
-        bail!("{} is not inside a gamma project (no {MANIFEST} here or above); create one with `gamma init`", dir.display())
+        bail!(
+            "{} is not inside a gamma project (no {MANIFEST} here or above); create one with `gamma init`",
+            dir.display()
+        )
     }
 
     pub fn open(root: &Path) -> Result<Project> {
-        let root = root.canonicalize().with_context(|| format!("no such folder: {}", root.display()))?;
+        let root = root
+            .canonicalize()
+            .with_context(|| format!("no such folder: {}", root.display()))?;
         let p = root.join(MANIFEST);
-        let text = std::fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?;
-        let manifest: Manifest = toml::from_str(&text).with_context(|| format!("{} is not a valid gamma manifest", p.display()))?;
+        let text =
+            std::fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?;
+        let manifest: Manifest = toml::from_str(&text)
+            .with_context(|| format!("{} is not a valid gamma manifest", p.display()))?;
         manifest.validate()?;
         Ok(Project { root, manifest })
     }
 
     pub fn path(&self, rel: &str) -> PathBuf {
         let p = Path::new(rel);
-        if p.is_absolute() { p.to_path_buf() } else { self.root.join(p) }
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.root.join(p)
+        }
     }
 
     pub fn sim(&self, name: &str) -> Result<&SimCfg> {
-        self.manifest.simulations.iter().find(|s| s.name == name).ok_or_else(|| {
-            let names: Vec<&str> = self.manifest.simulations.iter().map(|s| s.name.as_str()).collect();
-            anyhow::anyhow!("no simulation named '{name}' in {MANIFEST}; simulations: {}", if names.is_empty() { "none".into() } else { names.join(", ") })
-        })
+        self.manifest
+            .simulations
+            .iter()
+            .find(|s| s.name == name)
+            .ok_or_else(|| {
+                let names: Vec<&str> = self
+                    .manifest
+                    .simulations
+                    .iter()
+                    .map(|s| s.name.as_str())
+                    .collect();
+                anyhow::anyhow!(
+                    "no simulation named '{name}' in {MANIFEST}; simulations: {}",
+                    if names.is_empty() {
+                        "none".into()
+                    } else {
+                        names.join(", ")
+                    }
+                )
+            })
     }
 
     /// Folder holding gamma's local state (event log, caches): git-ignored.
@@ -181,7 +212,11 @@ impl Project {
     /// The interpreter for generators: a relative path is taken from the project root.
     pub fn python(&self) -> PathBuf {
         let i = &self.manifest.python.interpreter;
-        if i.contains('/') || i.contains('\\') { self.path(i) } else { PathBuf::from(i) }
+        if i.contains('/') || i.contains('\\') {
+            self.path(i)
+        } else {
+            PathBuf::from(i)
+        }
     }
 }
 
@@ -193,7 +228,10 @@ impl Manifest {
         let mut seen = std::collections::BTreeSet::new();
         for s in &self.simulations {
             if s.name.is_empty() || s.name.contains('/') || s.name.contains(' ') {
-                bail!("simulation name '{}' must be non-empty and contain no '/' or spaces", s.name);
+                bail!(
+                    "simulation name '{}' must be non-empty and contain no '/' or spaces",
+                    s.name
+                );
             }
             if !seen.insert(&s.name) {
                 bail!("two simulations are named '{}'", s.name);
@@ -203,7 +241,13 @@ impl Manifest {
     }
 
     pub fn new(name: &str) -> Manifest {
-        Manifest { project: ProjectMeta { name: name.into(), description: String::new() }, ..Default::default() }
+        Manifest {
+            project: ProjectMeta {
+                name: name.into(),
+                description: String::new(),
+            },
+            ..Default::default()
+        }
     }
 }
 

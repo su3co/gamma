@@ -39,26 +39,58 @@ pub struct Node {
 }
 
 pub fn read_circuit(path: &Path) -> Result<CircuitView> {
-    let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let v: Value = serde_json::from_str(&text).with_context(|| format!("{} is not JSON", path.display()))?;
-    Ok(view(&v, path.file_stem().and_then(|s| s.to_str()).unwrap_or("circuit")))
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let v: Value =
+        serde_json::from_str(&text).with_context(|| format!("{} is not JSON", path.display()))?;
+    Ok(view(
+        &v,
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("circuit"),
+    ))
 }
 
 pub fn view(v: &Value, fallback_name: &str) -> CircuitView {
-    let keys = v.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
-    let list = v.get("components").or_else(|| v.get("elements")).or_else(|| v.get("instances"));
+    let keys = v
+        .as_object()
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+    let list = v
+        .get("components")
+        .or_else(|| v.get("elements"))
+        .or_else(|| v.get("instances"));
     let mut components = vec![];
     if let Some(l) = list {
         if let Some(a) = l.as_array() {
             for (i, c) in a.iter().enumerate() {
                 components.push(Node {
-                    id: c.get("id").or_else(|| c.get("name")).and_then(|x| x.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("c{i}")),
-                    kind: c.get("type").or_else(|| c.get("kind")).or_else(|| c.get("component")).and_then(|x| x.as_str()).unwrap_or("?").to_string(),
+                    id: c
+                        .get("id")
+                        .or_else(|| c.get("name"))
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("c{i}")),
+                    kind: c
+                        .get("type")
+                        .or_else(|| c.get("kind"))
+                        .or_else(|| c.get("component"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("?")
+                        .to_string(),
                 });
             }
         } else if let Some(o) = l.as_object() {
             for (k, c) in o {
-                components.push(Node { id: k.clone(), kind: c.get("type").or_else(|| c.get("component")).and_then(|x| x.as_str()).unwrap_or("?").to_string() });
+                components.push(Node {
+                    id: k.clone(),
+                    kind: c
+                        .get("type")
+                        .or_else(|| c.get("component"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("?")
+                        .to_string(),
+                });
             }
         }
     }
@@ -68,9 +100,15 @@ pub fn view(v: &Value, fallback_name: &str) -> CircuitView {
             for c in a {
                 if let Some(p) = c.as_array() {
                     if p.len() >= 2 {
-                        connections.push((p[0].as_str().unwrap_or("").to_string(), p[1].as_str().unwrap_or("").to_string()));
+                        connections.push((
+                            p[0].as_str().unwrap_or("").to_string(),
+                            p[1].as_str().unwrap_or("").to_string(),
+                        ));
                     }
-                } else if let (Some(a), Some(b)) = (c.get("from").and_then(|x| x.as_str()), c.get("to").and_then(|x| x.as_str())) {
+                } else if let (Some(a), Some(b)) = (
+                    c.get("from").and_then(|x| x.as_str()),
+                    c.get("to").and_then(|x| x.as_str()),
+                ) {
                     connections.push((a.into(), b.into()));
                 }
             }
@@ -81,7 +119,11 @@ pub fn view(v: &Value, fallback_name: &str) -> CircuitView {
         }
     }
     CircuitView {
-        name: v.get("name").and_then(|x| x.as_str()).unwrap_or(fallback_name).to_string(),
+        name: v
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or(fallback_name)
+            .to_string(),
         recognised: !components.is_empty(),
         components,
         connections,
@@ -103,23 +145,42 @@ pub struct ExternalEngine {
 
 impl Default for ExternalEngine {
     fn default() -> Self {
-        ExternalEngine { template: std::env::var("GAMMA_LIGHTSIM_QUANTUM").unwrap_or_else(|_| "lightsim-quantum run {circuit} --out {results}".into()) }
+        ExternalEngine {
+            template: std::env::var("GAMMA_LIGHTSIM_QUANTUM")
+                .unwrap_or_else(|_| "lightsim-quantum run {circuit} --out {results}".into()),
+        }
     }
 }
 
 impl Engine for ExternalEngine {
     fn name(&self) -> String {
-        self.template.split_whitespace().next().unwrap_or("lightsim-quantum").to_string()
+        self.template
+            .split_whitespace()
+            .next()
+            .unwrap_or("lightsim-quantum")
+            .to_string()
     }
     fn available(&self) -> bool {
         which(&self.name())
     }
     fn run(&self, circuit: &Path, results: &Path) -> Result<()> {
         if !self.available() {
-            bail!("lightsim-quantum is not installed (no '{}' on PATH); circuits can be viewed but not run yet", self.name());
+            bail!(
+                "lightsim-quantum is not installed (no '{}' on PATH); circuits can be viewed but not run yet",
+                self.name()
+            );
         }
-        let parts: Vec<String> = self.template.split_whitespace().map(|p| p.replace("{circuit}", &circuit.to_string_lossy()).replace("{results}", &results.to_string_lossy())).collect();
-        let st = std::process::Command::new(&parts[0]).args(&parts[1..]).status()?;
+        let parts: Vec<String> = self
+            .template
+            .split_whitespace()
+            .map(|p| {
+                p.replace("{circuit}", &circuit.to_string_lossy())
+                    .replace("{results}", &results.to_string_lossy())
+            })
+            .collect();
+        let st = std::process::Command::new(&parts[0])
+            .args(&parts[1..])
+            .status()?;
         if !st.success() {
             bail!("{} exited with {st}", parts[0]);
         }
@@ -131,7 +192,9 @@ fn which(prog: &str) -> bool {
     if prog.contains('/') {
         return Path::new(prog).is_file();
     }
-    std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join(prog).is_file())).unwrap_or(false)
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d.join(prog).is_file()))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

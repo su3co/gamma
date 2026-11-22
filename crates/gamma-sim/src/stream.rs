@@ -10,13 +10,42 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum Msg {
-    Hello { version: String, lightsim: String, host_arch: String, devices: Vec<crate::devices::DeviceInfo>, precision: String },
-    Plan { cells: usize, steps: usize, dt: f64, memory_bytes: u64, device: String },
-    Progress { step: usize, steps: usize, elapsed: f64, decay: Option<f64>, mcells_per_s: f64 },
+    Hello {
+        version: String,
+        lightsim: String,
+        host_arch: String,
+        devices: Vec<crate::devices::DeviceInfo>,
+        precision: String,
+    },
+    Plan {
+        cells: usize,
+        steps: usize,
+        dt: f64,
+        memory_bytes: u64,
+        device: String,
+    },
+    Progress {
+        step: usize,
+        steps: usize,
+        elapsed: f64,
+        decay: Option<f64>,
+        mcells_per_s: f64,
+    },
     Slice(Slice),
-    Log { line: String },
-    Done { steps: usize, seconds: f64, mcells_per_s: f64, stopped_early: bool, results: String, backend: String },
-    Error { message: String },
+    Log {
+        line: String,
+    },
+    Done {
+        steps: usize,
+        seconds: f64,
+        mcells_per_s: f64,
+        stopped_early: bool,
+        results: String,
+        backend: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// A field plane, f32 samples base64 encoded (row-major over the two in-plane axes).
@@ -32,19 +61,40 @@ pub struct Slice {
 }
 
 impl Slice {
-    pub fn new(step: usize, comp: &str, axis: usize, index: usize, dims: [usize; 2], data: &[f32]) -> Slice {
+    pub fn new(
+        step: usize,
+        comp: &str,
+        axis: usize,
+        index: usize,
+        dims: [usize; 2],
+        data: &[f32],
+    ) -> Slice {
         let mut bytes = Vec::with_capacity(data.len() * 4);
         let mut m = 0f32;
         for v in data {
             bytes.extend(v.to_le_bytes());
             m = m.max(v.abs());
         }
-        Slice { step, comp: comp.into(), axis, index, dims, data: base64::engine::general_purpose::STANDARD.encode(bytes), max_abs: m }
+        Slice {
+            step,
+            comp: comp.into(),
+            axis,
+            index,
+            dims,
+            data: base64::engine::general_purpose::STANDARD.encode(bytes),
+            max_abs: m,
+        }
     }
 
     pub fn values(&self) -> Vec<f32> {
-        let b = base64::engine::general_purpose::STANDARD.decode(&self.data).unwrap_or_default();
-        b.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
+        let b = base64::engine::general_purpose::STANDARD
+            .decode(&self.data)
+            .unwrap_or_default();
+        b.as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
     }
 }
 
@@ -79,6 +129,9 @@ mod tests {
         assert_eq!(back, m);
         assert_eq!(s.values(), vec![1.0, -2.0, 0.5, 0.0]);
         assert_eq!(s.max_abs, 2.0);
-        assert_eq!(parse_lightsim_progress("  step 200/420 (0.4 s)"), Some((200, 420, 0.4)));
+        assert_eq!(
+            parse_lightsim_progress("  step 200/420 (0.4 s)"),
+            Some((200, 420, 0.4))
+        );
     }
 }

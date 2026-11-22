@@ -1,0 +1,19 @@
+{
+  "name": "wire",
+  "region": {"min": [0, -1e-6, -0.6e-6], "max": [3e-6, 1e-6, 0.8e-6]},
+  "mesh": {"type": "uniform", "dx": [60e-9, 60e-9, 50e-9]},
+  "boundaries": {"x": [{"type": "pml", "layers": 8}, {"type": "pml", "layers": 8}],
+                 "y": [{"type": "pml", "layers": 8}, {"type": "pml", "layers": 8}],
+                 "z": [{"type": "pml", "layers": 8}, {"type": "pml", "layers": 8}]},
+  "run_time": 20e-15,
+  "background": "sio2",
+  "media": [{"name": "sio2", "eps": [2.085, 2.085, 2.085]}, {"name": "si", "eps": [12.08, 12.08, 12.08]}],
+  "structures": [{"name": "wire", "medium": "si", "shape": {"type": "poly_slab", "vertices": [[-1e-6, -0.225e-6], [6e-6, -0.225e-6], [6e-6, 0.225e-6], [-1e-6, 0.225e-6]], "slab_min": 0, "slab_max": 0.22e-6}}],
+  "sources": [{"type": "point_dipole", "name": "dipole", "position": [0.6e-6, 0, 0.11e-6], "polarization": "Ey",
+               "signal": {"type": "gaussian_pulse", "freq0": 1.934e14, "fwidth": 4e13}}],
+  "monitors": [
+    {"type": "flux", "name": "through", "axis": 0, "position": 2.4e-6, "min": [2.4e-6, -0.9e-6, -0.5e-6], "max": [2.4e-6, 0.9e-6, 0.7e-6], "freqs": [1.85e14, 1.934e14, 2.0e14]},
+    {"type": "dft_field", "name": "top", "min": [0, -1e-6, 0.11e-6], "max": [3e-6, 1e-6, 0.11e-6], "components": ["Ey"], "freqs": [1.934e14]}
+  ],
+  "shutoff": 1e-4
+}

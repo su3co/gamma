@@ -13,3 +13,6 @@ tiny-skia.workspace = true
 ab_glyph.workspace = true
 anyhow.workspace = true
 serde.workspace = true
+
+[lints]
+workspace = true

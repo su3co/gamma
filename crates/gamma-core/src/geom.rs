@@ -9,7 +9,10 @@ pub struct BBox {
 }
 
 impl BBox {
-    pub const EMPTY: BBox = BBox { min: [f64::INFINITY, f64::INFINITY], max: [f64::NEG_INFINITY, f64::NEG_INFINITY] };
+    pub const EMPTY: BBox = BBox {
+        min: [f64::INFINITY, f64::INFINITY],
+        max: [f64::NEG_INFINITY, f64::NEG_INFINITY],
+    };
 
     pub fn of(pts: &[P2]) -> BBox {
         let mut b = BBox::EMPTY;
@@ -38,7 +41,10 @@ impl BBox {
         p[0] >= self.min[0] && p[0] <= self.max[0] && p[1] >= self.min[1] && p[1] <= self.max[1]
     }
     pub fn intersects(&self, o: &BBox) -> bool {
-        !(o.min[0] > self.max[0] || o.max[0] < self.min[0] || o.min[1] > self.max[1] || o.max[1] < self.min[1])
+        !(o.min[0] > self.max[0]
+            || o.max[0] < self.min[0]
+            || o.min[1] > self.max[1]
+            || o.max[1] < self.min[1])
     }
     pub fn width(&self) -> f64 {
         self.max[0] - self.min[0]
@@ -47,7 +53,10 @@ impl BBox {
         self.max[1] - self.min[1]
     }
     pub fn grow(&self, d: f64) -> BBox {
-        BBox { min: [self.min[0] - d, self.min[1] - d], max: [self.max[0] + d, self.max[1] + d] }
+        BBox {
+            min: [self.min[0] - d, self.min[1] - d],
+            max: [self.max[0] + d, self.max[1] + d],
+        }
     }
 }
 
@@ -80,7 +89,11 @@ pub fn point_in_polygon(p: &[P2], q: P2) -> bool {
 pub fn dist_point_segment(q: P2, a: P2, b: P2) -> (f64, P2) {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let l2 = dx * dx + dy * dy;
-    let t = if l2 > 0.0 { (((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2).clamp(0.0, 1.0) } else { 0.0 };
+    let t = if l2 > 0.0 {
+        (((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / l2).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let c = [a[0] + t * dx, a[1] + t * dy];
     (((q[0] - c[0]).powi(2) + (q[1] - c[1]).powi(2)).sqrt(), c)
 }
@@ -146,8 +159,16 @@ pub fn path_to_polygon(pts: &[P2], width: f64, extend: bool) -> Vec<Vec<P2>> {
     let mut left = Vec::with_capacity(n);
     let mut right = Vec::with_capacity(n);
     for i in 0..n {
-        let d_in = if i > 0 { dir(pts[i - 1], pts[i]) } else { dir(pts[0], pts[1]) };
-        let d_out = if i + 1 < n { dir(pts[i], pts[i + 1]) } else { d_in };
+        let d_in = if i > 0 {
+            dir(pts[i - 1], pts[i])
+        } else {
+            dir(pts[0], pts[1])
+        };
+        let d_out = if i + 1 < n {
+            dir(pts[i], pts[i + 1])
+        } else {
+            d_in
+        };
         let n_in = [-d_in[1], d_in[0]];
         let n_out = [-d_out[1], d_out[0]];
         let mut m = [n_in[0] + n_out[0], n_in[1] + n_out[1]];
@@ -178,7 +199,8 @@ pub struct Mesh {
 impl Mesh {
     fn vert(&mut self, p: [f64; 3], n: [f32; 3]) -> u32 {
         let i = (self.positions.len() / 3) as u32;
-        self.positions.extend([p[0] as f32, p[1] as f32, p[2] as f32]);
+        self.positions
+            .extend([p[0] as f32, p[1] as f32, p[2] as f32]);
         self.normals.extend(n);
         i
     }
@@ -191,11 +213,22 @@ impl Mesh {
         let ccw = signed_area(poly) >= 0.0;
         let tri = triangulate(poly);
         for (z, nz) in [(z1, 1.0f32), (z0, -1.0f32)] {
-            let base: Vec<u32> = poly.iter().map(|p| self.vert([p[0], p[1], z], [0.0, 0.0, nz])).collect();
-            for t in tri.chunks_exact(3) {
-                let (a, b, c) = (base[t[0] as usize], base[t[1] as usize], base[t[2] as usize]);
+            let base: Vec<u32> = poly
+                .iter()
+                .map(|p| self.vert([p[0], p[1], z], [0.0, 0.0, nz]))
+                .collect();
+            for t in tri.as_chunks::<3>().0 {
+                let (a, b, c) = (
+                    base[t[0] as usize],
+                    base[t[1] as usize],
+                    base[t[2] as usize],
+                );
                 let up = (nz > 0.0) == ccw;
-                if up { self.indices.extend([a, b, c]) } else { self.indices.extend([a, c, b]) }
+                if up {
+                    self.indices.extend([a, b, c])
+                } else {
+                    self.indices.extend([a, c, b])
+                }
             }
         }
         let n = poly.len();
@@ -231,10 +264,20 @@ mod tests {
         let sq = [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 1.0]];
         assert_eq!(signed_area(&sq), 2.0);
         assert_eq!(triangulate(&sq).len(), 6);
-        let l = [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [1.0, 1.0], [1.0, 2.0], [0.0, 2.0]];
+        let l = [
+            [0.0, 0.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 2.0],
+            [0.0, 2.0],
+        ];
         let t = triangulate(&l);
         assert_eq!(t.len(), 12);
-        let area: f64 = t.chunks(3).map(|c| signed_area(&[l[c[0] as usize], l[c[1] as usize], l[c[2] as usize]]).abs()).sum();
+        let area: f64 = t
+            .chunks(3)
+            .map(|c| signed_area(&[l[c[0] as usize], l[c[1] as usize], l[c[2] as usize]]).abs())
+            .sum();
         assert!((area - 3.0).abs() < 1e-12);
         assert!(point_in_polygon(&l, [0.5, 1.5]));
         assert!(!point_in_polygon(&l, [1.5, 1.5]));

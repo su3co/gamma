@@ -1,7 +1,10 @@
 // gamma's desktop shell: starts (or finds) the hub, opens the window, and
 // runs updates with channels, signature checks and rollback.
 
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
 
 mod update;
 
@@ -33,12 +36,14 @@ fn gamma_program() -> PathBuf {
 #[tauri::command]
 fn hub_address(state: tauri::State<Shell>) -> Result<Value, String> {
     let mut g = state.hub.lock().unwrap();
-    if let Some(h) = g.as_ref() {
-        if gamma_hub::discovery::alive(h) {
-            return Ok(json!({"url": h.url(), "token": h.token}));
-        }
+    if let Some(h) = g.as_ref()
+        && gamma_hub::discovery::alive(h)
+    {
+        return Ok(json!({"url": h.url(), "token": h.token}));
     }
-    let h = gamma_hub::discovery::connect_or_spawn_with(&gamma_program(), &["--idle-exit-min", "30"]).map_err(|e| format!("{e:#}"))?;
+    let h =
+        gamma_hub::discovery::connect_or_spawn_with(&gamma_program(), &["--idle-exit-min", "30"])
+            .map_err(|e| format!("{e:#}"))?;
     let v = json!({"url": h.url(), "token": h.token});
     *g = Some(h);
     Ok(v)
@@ -62,11 +67,42 @@ fn mark_healthy() -> Result<(), String> {
 fn main() {
     // an update that failed to start twice is rolled back before anything else
     update::on_start();
-    tauri::Builder::default()
+    let args: Vec<String> = std::env::args().collect();
+    let headless = update::headless_command(&args);
+    let windowed = headless.is_none();
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .manage(Shell { hub: Mutex::new(None) })
-        .invoke_handler(tauri::generate_handler![hub_address, app_info, mark_healthy, update::update_check, update::update_install, update::update_rollback])
-        .run(tauri::generate_context!())
-        .expect("error while running gamma");
+        .manage(Shell {
+            hub: Mutex::new(None),
+        })
+        .invoke_handler(tauri::generate_handler![
+            hub_address,
+            app_info,
+            mark_healthy,
+            update::update_check,
+            update::update_install,
+            update::update_rollback
+        ])
+        .setup(move |app| {
+            if windowed {
+                let cfg = app
+                    .config()
+                    .app
+                    .windows
+                    .first()
+                    .cloned()
+                    .expect("window config");
+                tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?.build()?;
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while starting gamma");
+    if let Some(cmd) = headless {
+        // scriptable update commands (CI and tests): no window
+        let code = tauri::async_runtime::block_on(update::run_headless(app.handle().clone(), cmd));
+        std::process::exit(code);
+    }
+    app.run(|_, _| {});
 }

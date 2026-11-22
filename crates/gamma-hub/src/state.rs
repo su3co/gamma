@@ -41,7 +41,10 @@ fn throughput_path() -> PathBuf {
 
 impl Hub {
     pub fn new(token: String, worker: PathBuf, ui_dir: Option<PathBuf>) -> Hub {
-        let tp: HashMap<String, f64> = std::fs::read_to_string(throughput_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let tp: HashMap<String, f64> = std::fs::read_to_string(throughput_path())
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default();
         Hub(Arc::new(Inner {
             token,
             projects: Mutex::new(HashMap::new()),
@@ -57,7 +60,9 @@ impl Hub {
     }
 
     pub fn open(&self, root: &Path) -> Result<Arc<ProjectState>> {
-        let root = root.canonicalize().map_err(|e| anyhow::anyhow!("cannot open {}: {e}", root.display()))?;
+        let root = root
+            .canonicalize()
+            .map_err(|e| anyhow::anyhow!("cannot open {}: {e}", root.display()))?;
         let id = crate::projects::project_id(&root);
         if let Some(p) = self.projects.lock().unwrap().get(&id) {
             return Ok(p.clone());
@@ -93,7 +98,17 @@ impl Hub {
         let all = self.remotes(ps);
         match all.iter().find(|r| r.name == name) {
             Some(r) => Ok(r.clone()),
-            None => bail!("no remote host named '{name}'; known: {}", if all.is_empty() { "none (add one with `gamma remote add`)".into() } else { all.iter().map(|r| r.name.clone()).collect::<Vec<_>>().join(", ") }),
+            None => bail!(
+                "no remote host named '{name}'; known: {}",
+                if all.is_empty() {
+                    "none (add one with `gamma remote add`)".into()
+                } else {
+                    all.iter()
+                        .map(|r| r.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            ),
         }
     }
 
@@ -120,7 +135,12 @@ impl Hub {
         let mut tp = self.throughput.lock().unwrap();
         let e = tp.entry(device_name.to_string()).or_insert(cells_per_s);
         *e = 0.5 * *e + 0.5 * cells_per_s;
-        let _ = gamma_core::fsutil::atomic_write(&throughput_path(), serde_json::to_string_pretty(&*tp).unwrap_or_default().as_bytes());
+        let _ = gamma_core::fsutil::atomic_write(
+            &throughput_path(),
+            serde_json::to_string_pretty(&*tp)
+                .unwrap_or_default()
+                .as_bytes(),
+        );
     }
 
     pub fn info(&self) -> Value {
@@ -145,7 +165,13 @@ fn recent_path() -> PathBuf {
 }
 
 pub fn recent() -> Vec<String> {
-    std::fs::read_to_string(recent_path()).ok().and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok()).unwrap_or_default().into_iter().filter(|p| Path::new(p).join("gamma.toml").is_file()).collect()
+    std::fs::read_to_string(recent_path())
+        .ok()
+        .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| Path::new(p).join("gamma.toml").is_file())
+        .collect()
 }
 
 fn remember_recent(root: &Path) {
@@ -154,5 +180,8 @@ fn remember_recent(root: &Path) {
     r.retain(|x| x != &s);
     r.insert(0, s);
     r.truncate(12);
-    let _ = gamma_core::fsutil::atomic_write(&recent_path(), serde_json::to_string(&r).unwrap_or_default().as_bytes());
+    let _ = gamma_core::fsutil::atomic_write(
+        &recent_path(),
+        serde_json::to_string(&r).unwrap_or_default().as_bytes(),
+    );
 }

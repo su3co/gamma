@@ -36,7 +36,13 @@ pub struct Finding {
 
 impl Finding {
     pub fn new(severity: Severity, rule: &str, message: impl Into<String>) -> Finding {
-        Finding { severity, rule: rule.into(), message: message.into(), object: None, bbox: None }
+        Finding {
+            severity,
+            rule: rule.into(),
+            message: message.into(),
+            object: None,
+            bbox: None,
+        }
     }
     pub fn on(mut self, object: impl Into<String>) -> Finding {
         self.object = Some(object.into());
@@ -79,7 +85,7 @@ fn rasterize(polys: &[Vec<[f64; 2]>], b: &BBox, r: f64) -> Raster {
                 }
             }
             xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            for pair in xs.chunks_exact(2) {
+            for pair in xs.as_chunks::<2>().0 {
                 let i0 = ((pair[0] - b.min[0]) / r - 0.5).ceil().max(0.0) as usize;
                 let i1 = (((pair[1] - b.min[0]) / r - 0.5).floor() as isize).min(nx as isize - 1);
                 if i1 < i0 as isize {
@@ -92,7 +98,14 @@ fn rasterize(polys: &[Vec<[f64; 2]>], b: &BBox, r: f64) -> Raster {
             }
         }
     }
-    Raster { nx, ny, x0: b.min[0], y0: b.min[1], r, inside }
+    Raster {
+        nx,
+        ny,
+        x0: b.min[0],
+        y0: b.min[1],
+        r,
+        inside,
+    }
 }
 
 /// Squared Euclidean distance (in cells) from every cell to the nearest cell where `seed` is true.
@@ -112,7 +125,8 @@ fn edt(seed: &[bool], nx: usize, ny: usize) -> Vec<f64> {
         for q in 1..n {
             loop {
                 let p = v[k];
-                let s = ((src[q] + (q * q) as f64) - (src[p] + (p * p) as f64)) / (2.0 * q as f64 - 2.0 * p as f64);
+                let s = ((src[q] + (q * q) as f64) - (src[p] + (p * p) as f64))
+                    / (2.0 * q as f64 - 2.0 * p as f64);
                 if s <= z[k] {
                     if k == 0 {
                         v[0] = q;
@@ -204,7 +218,13 @@ fn clusters(flag: &[bool], nx: usize, ny: usize, depth: &[f64]) -> Vec<(usize, [
 }
 
 /// Width and spacing violations on one layer.
-pub fn drc_layer(polys: &[Vec<[f64; 2]>], layer_ref: &str, layer_name: &str, min_width: Option<f64>, min_space: Option<f64>) -> Vec<Finding> {
+pub fn drc_layer(
+    polys: &[Vec<[f64; 2]>],
+    layer_ref: &str,
+    layer_name: &str,
+    min_width: Option<f64>,
+    min_space: Option<f64>,
+) -> Vec<Finding> {
     let mut out = vec![];
     let mut lb = BBox::EMPTY;
     for p in polys {
@@ -214,14 +234,20 @@ pub fn drc_layer(polys: &[Vec<[f64; 2]>], layer_ref: &str, layer_name: &str, min
         return out;
     }
     for (rule, value) in [("drc.min_width", min_width), ("drc.min_space", min_space)] {
-        let Some(w) = value.filter(|w| *w > 0.0) else { continue };
+        let Some(w) = value.filter(|w| *w > 0.0) else {
+            continue;
+        };
         let b = lb.grow(w * 1.5);
         let mut r = w / 8.0;
         let cells = (b.width() / r) * (b.height() / r);
         let mut note = String::new();
         if cells > MAX_CELLS as f64 {
             r *= (cells / MAX_CELLS as f64).sqrt();
-            note = format!(" (checked on a {:.0} nm grid: layer too large for the {:.0} nm default)", r * 1e3, w / 8.0 * 1e3);
+            note = format!(
+                " (checked on a {:.0} nm grid: layer too large for the {:.0} nm default)",
+                r * 1e3,
+                w / 8.0 * 1e3
+            );
         }
         if r > w / 3.0 {
             out.push(Finding::new(Severity::Warning, rule, format!("layer {layer_name} is too large to check {rule} at {w} um on one grid; skipped")).on(layer_ref));
@@ -231,12 +257,18 @@ pub fn drc_layer(polys: &[Vec<[f64; 2]>], layer_ref: &str, layer_name: &str, min
         let (nx, ny) = (ras.nx, ras.ny);
         let h = w / 2.0 / r; // rule radius in cells
         // width: opening of the inside; spacing: closing (= opening of the outside)
-        let solid: Vec<bool> = if rule == "drc.min_width" { ras.inside.clone() } else { ras.inside.iter().map(|v| !v).collect() };
+        let solid: Vec<bool> = if rule == "drc.min_width" {
+            ras.inside.clone()
+        } else {
+            ras.inside.iter().map(|v| !v).collect()
+        };
         let not_solid: Vec<bool> = solid.iter().map(|v| !v).collect();
         let d_in = edt(&not_solid, nx, ny); // distance from solid cells to the outside
         let core: Vec<bool> = d_in.iter().map(|d| d.sqrt() >= h).collect();
         let d_core = edt(&core, nx, ny);
-        let flagged: Vec<bool> = (0..nx * ny).map(|i| solid[i] && d_core[i].sqrt() > h + 0.75).collect();
+        let flagged: Vec<bool> = (0..nx * ny)
+            .map(|i| solid[i] && d_core[i].sqrt() > h + 0.75)
+            .collect();
         let depth: Vec<f64> = d_core.iter().map(|d| d.sqrt()).collect();
         for (n, bb, dmax) in clusters(&flagged, nx, ny, &depth) {
             let area = n as f64; // cells
@@ -246,13 +278,22 @@ pub fn drc_layer(polys: &[Vec<[f64; 2]>], layer_ref: &str, layer_name: &str, min
             }
             let bbox = BBox {
                 min: [ras.x0 + bb[0] as f64 * ras.r, ras.y0 + bb[1] as f64 * ras.r],
-                max: [ras.x0 + (bb[2] + 1) as f64 * ras.r, ras.y0 + (bb[3] + 1) as f64 * ras.r],
+                max: [
+                    ras.x0 + (bb[2] + 1) as f64 * ras.r,
+                    ras.y0 + (bb[3] + 1) as f64 * ras.r,
+                ],
             };
             // spacing clusters touching the padded edge are open space, not a gap
-            if rule == "drc.min_space" && (bb[0] == 0 || bb[1] == 0 || bb[2] + 1 >= nx || bb[3] + 1 >= ny) {
+            if rule == "drc.min_space"
+                && (bb[0] == 0 || bb[1] == 0 || bb[2] + 1 >= nx || bb[3] + 1 >= ny)
+            {
                 continue;
             }
-            let what = if rule == "drc.min_width" { "narrower than the minimum width" } else { "a gap narrower than the minimum spacing" };
+            let what = if rule == "drc.min_width" {
+                "narrower than the minimum width"
+            } else {
+                "a gap narrower than the minimum spacing"
+            };
             out.push(
                 Finding::new(
                     Severity::Error,
@@ -274,8 +315,16 @@ pub fn drc(layout: &Layout, stack: &Stack) -> Vec<Finding> {
         .layers
         .par_iter()
         .flat_map(|l| {
-            let Some(sl) = stack.layer_for(l.key.0, l.key.1) else { return vec![] };
-            drc_layer(&l.polygons, &format!("layer:{}/{}", l.key.0, l.key.1), &sl.name, sl.min_width, sl.min_space)
+            let Some(sl) = stack.layer_for(l.key.0, l.key.1) else {
+                return vec![];
+            };
+            drc_layer(
+                &l.polygons,
+                &format!("layer:{}/{}", l.key.0, l.key.1),
+                &sl.name,
+                sl.min_width,
+                sl.min_space,
+            )
         })
         .collect()
 }
@@ -290,16 +339,44 @@ pub fn project_checks(p: &Project, layout: Option<&Layout>, stack: Option<&Stack
     if let Some(l) = &p.manifest.layout {
         let gds = p.path(&l.gds);
         if !gds.is_file() {
-            out.push(Finding::new(Severity::Error, "project.missing_gds", format!("the layout {} does not exist yet{}", l.gds, if l.generator.is_some() { "; build the layout" } else { "" })));
-        } else if let Some(g) = &l.generator {
-            if let (Some(a), Some(b)) = (mtime(&p.path(g)), mtime(&gds)) {
-                if a > b {
-                    out.push(Finding::new(Severity::Warning, "project.stale_gds", format!("{g} changed after {} was written; rebuild the layout", l.gds)).on(format!("file:{g}")));
-                }
-            }
+            out.push(Finding::new(
+                Severity::Error,
+                "project.missing_gds",
+                format!(
+                    "the layout {} does not exist yet{}",
+                    l.gds,
+                    if l.generator.is_some() {
+                        "; build the layout"
+                    } else {
+                        ""
+                    }
+                ),
+            ));
+        } else if let Some(g) = &l.generator
+            && let (Some(a), Some(b)) = (mtime(&p.path(g)), mtime(&gds))
+            && a > b
+        {
+            out.push(
+                Finding::new(
+                    Severity::Warning,
+                    "project.stale_gds",
+                    format!(
+                        "{g} changed after {} was written; rebuild the layout",
+                        l.gds
+                    ),
+                )
+                .on(format!("file:{g}")),
+            );
         }
         if !p.path(&l.stack).is_file() {
-            out.push(Finding::new(Severity::Warning, "project.missing_stack", format!("no layer stack at {}; the 3-D view and design rules need one", l.stack)));
+            out.push(Finding::new(
+                Severity::Warning,
+                "project.missing_stack",
+                format!(
+                    "no layer stack at {}; the 3-D view and design rules need one",
+                    l.stack
+                ),
+            ));
         }
         if let (Some(layout), Some(stack)) = (layout, stack) {
             for ld in &layout.layers {
@@ -311,8 +388,20 @@ pub fn project_checks(p: &Project, layout: Option<&Layout>, stack: Option<&Stack
                 }
             }
             for sl in &stack.layers {
-                if stack.index_of(&sl.material).is_none() && stack.material(&sl.material).and_then(|m| m.lightsim.as_ref()).is_none() {
-                    out.push(Finding::new(Severity::Warning, "stack.unknown_material", format!("layer {} uses material '{}' with no index and no lightsim model", sl.name, sl.material)));
+                if stack.index_of(&sl.material).is_none()
+                    && stack
+                        .material(&sl.material)
+                        .and_then(|m| m.lightsim.as_ref())
+                        .is_none()
+                {
+                    out.push(Finding::new(
+                        Severity::Warning,
+                        "stack.unknown_material",
+                        format!(
+                            "layer {} uses material '{}' with no index and no lightsim model",
+                            sl.name, sl.material
+                        ),
+                    ));
                 }
             }
         }
@@ -320,13 +409,38 @@ pub fn project_checks(p: &Project, layout: Option<&Layout>, stack: Option<&Stack
     for s in &p.manifest.simulations {
         let spec = p.path(&s.spec);
         if !spec.is_file() {
-            out.push(Finding::new(Severity::Error, "project.missing_spec", format!("simulation {}: {} does not exist yet{}", s.name, s.spec, if s.generator.is_some() { "; build it" } else { "" })).on(format!("sim:{}", s.name)));
-        } else if let Some(g) = &s.generator {
-            if let (Some(a), Some(b)) = (mtime(&p.path(g)), mtime(&spec)) {
-                if a > b {
-                    out.push(Finding::new(Severity::Warning, "project.stale_spec", format!("simulation {}: {g} changed after {} was written; rebuild it", s.name, s.spec)).on(format!("sim:{}", s.name)));
-                }
-            }
+            out.push(
+                Finding::new(
+                    Severity::Error,
+                    "project.missing_spec",
+                    format!(
+                        "simulation {}: {} does not exist yet{}",
+                        s.name,
+                        s.spec,
+                        if s.generator.is_some() {
+                            "; build it"
+                        } else {
+                            ""
+                        }
+                    ),
+                )
+                .on(format!("sim:{}", s.name)),
+            );
+        } else if let Some(g) = &s.generator
+            && let (Some(a), Some(b)) = (mtime(&p.path(g)), mtime(&spec))
+            && a > b
+        {
+            out.push(
+                Finding::new(
+                    Severity::Warning,
+                    "project.stale_spec",
+                    format!(
+                        "simulation {}: {g} changed after {} was written; rebuild it",
+                        s.name, s.spec
+                    ),
+                )
+                .on(format!("sim:{}", s.name)),
+            );
         }
     }
     out
@@ -343,17 +457,48 @@ mod tests {
     #[test]
     fn width_and_space() {
         // a 0.5 um wire is fine, a 0.1 um wire violates 0.15 um
-        let ok = drc_layer(&[rect(0.0, 0.0, 10.0, 0.5)], "layer:1/0", "core", Some(0.15), None);
+        let ok = drc_layer(
+            &[rect(0.0, 0.0, 10.0, 0.5)],
+            "layer:1/0",
+            "core",
+            Some(0.15),
+            None,
+        );
         assert!(ok.is_empty(), "{ok:?}");
-        let bad = drc_layer(&[rect(0.0, 0.0, 10.0, 0.1)], "layer:1/0", "core", Some(0.15), None);
+        let bad = drc_layer(
+            &[rect(0.0, 0.0, 10.0, 0.1)],
+            "layer:1/0",
+            "core",
+            Some(0.15),
+            None,
+        );
         assert_eq!(bad.len(), 1, "{bad:?}");
         // two wires 0.1 um apart violate 0.15 um spacing; 0.3 um apart do not
-        let bad = drc_layer(&[rect(0.0, 0.0, 10.0, 0.5), rect(0.0, 0.6, 10.0, 1.1)], "l", "core", None, Some(0.15));
+        let bad = drc_layer(
+            &[rect(0.0, 0.0, 10.0, 0.5), rect(0.0, 0.6, 10.0, 1.1)],
+            "l",
+            "core",
+            None,
+            Some(0.15),
+        );
         assert_eq!(bad.len(), 1, "{bad:?}");
-        let ok = drc_layer(&[rect(0.0, 0.0, 10.0, 0.5), rect(0.0, 0.8, 10.0, 1.3)], "l", "core", None, Some(0.15));
+        let ok = drc_layer(
+            &[rect(0.0, 0.0, 10.0, 0.5), rect(0.0, 0.8, 10.0, 1.3)],
+            "l",
+            "core",
+            None,
+            Some(0.15),
+        );
         assert!(ok.is_empty(), "{ok:?}");
         // an L shape: corners alone are not violations
-        let l = vec![[0.0, 0.0], [5.0, 0.0], [5.0, 0.5], [0.5, 0.5], [0.5, 5.0], [0.0, 5.0]];
+        let l = vec![
+            [0.0, 0.0],
+            [5.0, 0.0],
+            [5.0, 0.5],
+            [0.5, 0.5],
+            [0.5, 5.0],
+            [0.0, 5.0],
+        ];
         assert!(drc_layer(&[l], "l", "core", Some(0.15), Some(0.15)).is_empty());
     }
 

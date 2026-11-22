@@ -63,8 +63,10 @@ impl StackLayer {
 
 impl Stack {
     pub fn load(path: &Path) -> Result<Stack> {
-        let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        toml::from_str(&text).with_context(|| format!("{} is not a valid layer stack", path.display()))
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        toml::from_str(&text)
+            .with_context(|| format!("{} is not a valid layer stack", path.display()))
     }
 
     pub fn to_toml(&self) -> String {
@@ -72,11 +74,15 @@ impl Stack {
     }
 
     pub fn layer_for(&self, layer: u16, datatype: u16) -> Option<&StackLayer> {
-        self.layers.iter().find(|l| l.gds == Some([layer, datatype]))
+        self.layers
+            .iter()
+            .find(|l| l.gds == Some([layer, datatype]))
     }
 
     pub fn material(&self, name: &str) -> Option<&Material> {
-        self.materials.iter().find(|m| m.name.eq_ignore_ascii_case(name))
+        self.materials
+            .iter()
+            .find(|m| m.name.eq_ignore_ascii_case(name))
     }
 
     /// Index of a material at the stack wavelength (constant index if given,
@@ -105,7 +111,14 @@ impl Stack {
 
     /// A generic 220 nm silicon-on-insulator stack (gdsfactory generic PDK layers).
     pub fn soi220() -> Stack {
-        let l = |name: &str, gds: Option<[u16; 2]>, zmin: f64, t: f64, mat: &str, color: &str, w: Option<f64>, s: Option<f64>| StackLayer {
+        let l = |name: &str,
+                 gds: Option<[u16; 2]>,
+                 zmin: f64,
+                 t: f64,
+                 mat: &str,
+                 color: &str,
+                 w: Option<f64>,
+                 s: Option<f64>| StackLayer {
             name: name.into(),
             gds,
             zmin,
@@ -120,15 +133,57 @@ impl Stack {
             layers: vec![
                 l("substrate", None, -3.0, 1.0, "si", "#4a4f5a", None, None),
                 l("box", None, -2.0, 2.0, "sio2", "#9fb7c9", None, None),
-                l("core", Some([1, 0]), 0.0, 0.22, "si", "#d9a441", Some(0.15), Some(0.15)),
-                l("slab90", Some([3, 0]), 0.0, 0.09, "si", "#c27b2a", Some(0.15), Some(0.15)),
-                l("nitride", Some([34, 0]), 0.32, 0.4, "sin", "#5fb39a", Some(0.3), Some(0.3)),
+                l(
+                    "core",
+                    Some([1, 0]),
+                    0.0,
+                    0.22,
+                    "si",
+                    "#d9a441",
+                    Some(0.15),
+                    Some(0.15),
+                ),
+                l(
+                    "slab90",
+                    Some([3, 0]),
+                    0.0,
+                    0.09,
+                    "si",
+                    "#c27b2a",
+                    Some(0.15),
+                    Some(0.15),
+                ),
+                l(
+                    "nitride",
+                    Some([34, 0]),
+                    0.32,
+                    0.4,
+                    "sin",
+                    "#5fb39a",
+                    Some(0.3),
+                    Some(0.3),
+                ),
                 l("clad", None, 0.0, 1.0, "sio2", "#bcd3e3", None, None),
             ],
             materials: vec![
-                Material { name: "si".into(), index: Some(3.476), lightsim: Some("Si".into()), color: None },
-                Material { name: "sio2".into(), index: Some(1.444), lightsim: Some("SiO2".into()), color: None },
-                Material { name: "sin".into(), index: Some(1.996), lightsim: Some("Si3N4".into()), color: None },
+                Material {
+                    name: "si".into(),
+                    index: Some(3.476),
+                    lightsim: Some("Si".into()),
+                    color: None,
+                },
+                Material {
+                    name: "sio2".into(),
+                    index: Some(1.444),
+                    lightsim: Some("SiO2".into()),
+                    color: None,
+                },
+                Material {
+                    name: "sin".into(),
+                    index: Some(1.996),
+                    lightsim: Some("Si3N4".into()),
+                    color: None,
+                },
             ],
             wavelength_um: 1.55,
         }

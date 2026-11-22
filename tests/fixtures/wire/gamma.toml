@@ -1,0 +1,12 @@
+[project]
+name = "Wire"
+description = "A silicon wire in oxide with a dipole source: the fixture of gamma's integration and interface tests."
+
+[layout]
+gds = "build/wire.gds"
+ports = "build/wire.ports.json"
+
+[[simulation]]
+name = "wire"
+spec = "build/sims/wire.json"
+device = "cpu"

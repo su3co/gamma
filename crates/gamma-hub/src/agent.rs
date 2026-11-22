@@ -39,7 +39,11 @@ pub fn mcp_config(root: &Path, gamma: &Path) -> Value {
 }
 
 fn which(prog: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(prog)).find(|f| f.is_file()))
+    std::env::var_os("PATH").and_then(|p| {
+        std::env::split_paths(&p)
+            .map(|d| d.join(prog))
+            .find(|f| f.is_file())
+    })
 }
 
 pub fn providers() -> Value {
@@ -50,26 +54,58 @@ pub fn providers() -> Value {
 }
 
 impl Agents {
-    pub async fn start(&self, ps: Arc<ProjectState>, provider: &str, gamma: &Path, extra: &[String]) -> Result<Value> {
+    pub async fn start(
+        &self,
+        ps: Arc<ProjectState>,
+        provider: &str,
+        gamma: &Path,
+        extra: &[String],
+    ) -> Result<Value> {
         let root = ps.root();
         let cfg_path = root.join(".gamma/local/mcp.json");
-        gamma_core::fsutil::atomic_write(&cfg_path, serde_json::to_string_pretty(&mcp_config(&root, gamma))?.as_bytes())?;
+        gamma_core::fsutil::atomic_write(
+            &cfg_path,
+            serde_json::to_string_pretty(&mcp_config(&root, gamma))?.as_bytes(),
+        )?;
         let id = format!("{provider}-{:04x}", rand::random::<u16>());
-        let mut session = Session { provider: provider.into(), id: id.clone(), stdin: None, child: None, busy: false, resume: None };
+        let mut session = Session {
+            provider: provider.into(),
+            id: id.clone(),
+            stdin: None,
+            child: None,
+            busy: false,
+            resume: None,
+        };
         match provider {
             "claude" => {
-                let prog = which("claude").context("Claude Code (`claude`) is not installed or not on PATH")?;
+                let prog = which("claude")
+                    .context("Claude Code (`claude`) is not installed or not on PATH")?;
                 let mut cmd = Command::new(prog);
-                cmd.args(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages"])
-                    .arg("--mcp-config")
-                    .arg(&cfg_path)
-                    .args(["--append-system-prompt", SYSTEM_PROMPT, "--permission-mode", "acceptEdits", "--allowedTools", "mcp__gamma"])
-                    .args(extra)
-                    .current_dir(&root)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .kill_on_drop(true);
+                cmd.args([
+                    "-p",
+                    "--input-format",
+                    "stream-json",
+                    "--output-format",
+                    "stream-json",
+                    "--verbose",
+                    "--include-partial-messages",
+                ])
+                .arg("--mcp-config")
+                .arg(&cfg_path)
+                .args([
+                    "--append-system-prompt",
+                    SYSTEM_PROMPT,
+                    "--permission-mode",
+                    "acceptEdits",
+                    "--allowedTools",
+                    "mcp__gamma",
+                ])
+                .args(extra)
+                .current_dir(&root)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .kill_on_drop(true);
                 let mut child = cmd.spawn().context("starting claude")?;
                 session.stdin = child.stdin.take();
                 let stdout = child.stdout.take().unwrap();
@@ -78,12 +114,17 @@ impl Agents {
                 let ps2 = ps.clone();
                 let actor = format!("agent:{id}");
                 let sess_ref = Arc::new(tokio::sync::Mutex::new(session));
-                self.sessions.lock().unwrap().insert(ps.id.clone(), sess_ref.clone());
+                self.sessions
+                    .lock()
+                    .unwrap()
+                    .insert(ps.id.clone(), sess_ref.clone());
                 let sr = sess_ref.clone();
                 tokio::spawn(async move {
                     let mut lines = BufReader::new(stdout).lines();
                     while let Ok(Some(line)) = lines.next_line().await {
-                        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                            continue;
+                        };
                         handle_claude(&ps2, &actor, &v, &sr).await;
                     }
                     ps2.log.push(&actor, "agent.ended", json!({}));
@@ -93,28 +134,49 @@ impl Agents {
                 tokio::spawn(async move {
                     let mut lines = BufReader::new(stderr).lines();
                     while let Ok(Some(line)) = lines.next_line().await {
-                        ps3.log.ephemeral(&actor2, "agent.stderr", json!({"line": line}));
+                        ps3.log
+                            .ephemeral(&actor2, "agent.stderr", json!({"line": line}));
                     }
                 });
             }
             "codex" => {
                 which("codex").context("Codex (`codex`) is not installed or not on PATH")?;
-                self.sessions.lock().unwrap().insert(ps.id.clone(), Arc::new(tokio::sync::Mutex::new(session)));
+                self.sessions
+                    .lock()
+                    .unwrap()
+                    .insert(ps.id.clone(), Arc::new(tokio::sync::Mutex::new(session)));
             }
             other => bail!("unknown agent '{other}': use claude or codex"),
         }
-        ps.log.push("person", "agent.started", json!({"session": id, "provider": provider}));
+        ps.log.push(
+            "person",
+            "agent.started",
+            json!({"session": id, "provider": provider}),
+        );
         Ok(json!({"session": id, "provider": provider}))
     }
 
     pub async fn send(&self, ps: Arc<ProjectState>, text: &str, gamma: &Path) -> Result<()> {
-        let s = self.sessions.lock().unwrap().get(&ps.id).cloned().context("no agent session in this project; start one first")?;
+        let s = self
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&ps.id)
+            .cloned()
+            .context("no agent session in this project; start one first")?;
         let mut sess = s.lock().await;
-        ps.log.push("person", "agent.message", json!({"session": sess.id, "role": "user", "text": text}));
+        ps.log.push(
+            "person",
+            "agent.message",
+            json!({"session": sess.id, "role": "user", "text": text}),
+        );
         match sess.provider.as_str() {
             "claude" => {
                 let msg = json!({"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": text}]}});
-                let stdin = sess.stdin.as_mut().context("the agent has exited; start a new session")?;
+                let stdin = sess
+                    .stdin
+                    .as_mut()
+                    .context("the agent has exited; start a new session")?;
                 stdin.write_all(format!("{msg}\n").as_bytes()).await?;
                 stdin.flush().await?;
                 sess.busy = true;
@@ -129,9 +191,15 @@ impl Agents {
                 }
                 cmd.arg("--json")
                     .arg("-c")
-                    .arg(format!("mcp_servers.gamma.command={}", toml_str(&gamma.to_string_lossy())))
+                    .arg(format!(
+                        "mcp_servers.gamma.command={}",
+                        toml_str(&gamma.to_string_lossy())
+                    ))
                     .arg("-c")
-                    .arg(format!("mcp_servers.gamma.args=[\"mcp\",\"--project\",{}]", toml_str(&root.to_string_lossy())))
+                    .arg(format!(
+                        "mcp_servers.gamma.args=[\"mcp\",\"--project\",{}]",
+                        toml_str(&root.to_string_lossy())
+                    ))
                     .args(["-s", "workspace-write"])
                     .arg(format!("{SYSTEM_PROMPT}\n\n{text}"))
                     .current_dir(&root)
@@ -148,12 +216,22 @@ impl Agents {
                 tokio::spawn(async move {
                     let mut lines = BufReader::new(stdout).lines();
                     while let Ok(Some(line)) = lines.next_line().await {
-                        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
-                        if let Some(id) = v.get("thread_id").or_else(|| v.get("session_id")).and_then(|x| x.as_str()) {
+                        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                            continue;
+                        };
+                        if let Some(id) = v
+                            .get("thread_id")
+                            .or_else(|| v.get("session_id"))
+                            .and_then(|x| x.as_str())
+                        {
                             sr.lock().await.resume = Some(id.to_string());
                         }
                         let item = v.get("item").unwrap_or(&v);
-                        let ty = item.get("type").or_else(|| item.get("item_type")).and_then(|t| t.as_str()).unwrap_or("");
+                        let ty = item
+                            .get("type")
+                            .or_else(|| item.get("item_type"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("");
                         if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
                             if ty.contains("message") || ty.contains("reasoning") {
                                 ps2.log.push(&actor, "agent.message", json!({"role": if ty.contains("reasoning") { "thinking" } else { "assistant" }, "text": t}));
@@ -179,7 +257,8 @@ impl Agents {
             if let Some(c) = sess.child.as_mut() {
                 let _ = c.start_kill();
             }
-            ps.log.push("person", "agent.stopped", json!({"session": sess.id}));
+            ps.log
+                .push("person", "agent.stopped", json!({"session": sess.id}));
         }
         Ok(())
     }
@@ -203,16 +282,41 @@ async fn turn_end(ps: &Arc<ProjectState>, actor: &str) {
     ps.log.push(actor, "agent.turn_end", json!({}));
     let root = ps.root();
     let a = actor.to_string();
-    let last_prompt = ps.log.since(0, Some(&["agent.message"])).into_iter().rev().find(|e| e.data["role"] == "user").and_then(|e| e.data["text"].as_str().map(|s| s.to_string())).unwrap_or_default();
-    let msg = format!("Agent turn: {}", last_prompt.lines().next().unwrap_or("").chars().take(72).collect::<String>());
+    let last_prompt = ps
+        .log
+        .since(0, Some(&["agent.message"]))
+        .into_iter()
+        .rev()
+        .find(|e| e.data["role"] == "user")
+        .and_then(|e| e.data["text"].as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    let msg = format!(
+        "Agent turn: {}",
+        last_prompt
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(72)
+            .collect::<String>()
+    );
     let res = tokio::task::spawn_blocking(move || crate::git::checkpoint(&root, &msg, &a)).await;
     if let Ok(Ok(Some(c))) = res {
         let _ = crate::projects::save_checkpoint_layout(ps, c.n);
-        ps.log.push(actor, "checkpoint", serde_json::to_value(&c).unwrap_or_default());
+        ps.log.push(
+            actor,
+            "checkpoint",
+            serde_json::to_value(&c).unwrap_or_default(),
+        );
     }
 }
 
-async fn handle_claude(ps: &Arc<ProjectState>, actor: &str, v: &Value, sess: &Arc<tokio::sync::Mutex<Session>>) {
+async fn handle_claude(
+    ps: &Arc<ProjectState>,
+    actor: &str,
+    v: &Value,
+    sess: &Arc<tokio::sync::Mutex<Session>>,
+) {
     match v["type"].as_str() {
         Some("stream_event") => {
             // partial text for live display
@@ -221,13 +325,25 @@ async fn handle_claude(ps: &Arc<ProjectState>, actor: &str, v: &Value, sess: &Ar
             }
         }
         Some("assistant") => {
-            for c in v["message"]["content"].as_array().cloned().unwrap_or_default() {
+            for c in v["message"]["content"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+            {
                 match c["type"].as_str() {
                     Some("text") => {
-                        ps.log.push(actor, "agent.message", json!({"role": "assistant", "text": c["text"]}));
+                        ps.log.push(
+                            actor,
+                            "agent.message",
+                            json!({"role": "assistant", "text": c["text"]}),
+                        );
                     }
                     Some("tool_use") => {
-                        ps.log.push(actor, "agent.tool", json!({"name": c["name"], "input": c["input"]}));
+                        ps.log.push(
+                            actor,
+                            "agent.tool",
+                            json!({"name": c["name"], "input": c["input"]}),
+                        );
                     }
                     _ => {}
                 }
@@ -240,7 +356,11 @@ async fn handle_claude(ps: &Arc<ProjectState>, actor: &str, v: &Value, sess: &Ar
         }
         Some("system") => {
             if v["subtype"] == "init" {
-                ps.log.push(actor, "agent.ready", json!({"model": v["model"], "tools": v["tools"].as_array().map(|a| a.len())}));
+                ps.log.push(
+                    actor,
+                    "agent.ready",
+                    json!({"model": v["model"], "tools": v["tools"].as_array().map(|a| a.len())}),
+                );
             }
         }
         _ => {}

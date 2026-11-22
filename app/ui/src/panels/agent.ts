@@ -6,7 +6,7 @@ import { el, toast } from "../lib/util";
 export class AgentPanel {
   root = el("div", { class: "agent" });
   log = el("div", { class: "log", "aria-live": "polite", "aria-label": "Conversation" });
-  input = el("textarea", { placeholder: "Ask the agent to design, simulate or explain…  (Enter to send, Shift-Enter for a new line)", "aria-label": "Message to the agent" }) as HTMLTextAreaElement;
+  input = el("textarea", { placeholder: "Ask the agent to design, simulate or explain…", title: "Enter sends, Shift-Enter starts a new line", "aria-label": "Message to the agent" }) as HTMLTextAreaElement;
   chips = el("div", { class: "chips" });
   status = el("span", { class: "muted small" });
   provider = el("select", { "aria-label": "Agent", style: { background: "var(--ground-2)", border: "1px solid var(--rule)", borderRadius: "3px", font: "12px var(--mono)" } }) as HTMLSelectElement;

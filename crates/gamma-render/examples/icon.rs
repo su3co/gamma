@@ -23,12 +23,21 @@ fn main() {
     let mut paint = Paint::default();
     paint.set_color(Color::from_rgba8(12, 14, 18, 255));
     paint.anti_alias = true;
-    pm.fill_path(&pb.finish().unwrap(), &paint, FillRule::Winding, Transform::identity(), None);
-    let mut font = FontRef::try_from_slice(include_bytes!("../../../assets/fonts/Literata.ttf")).unwrap();
+    pm.fill_path(
+        &pb.finish().unwrap(),
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+    let mut font =
+        FontRef::try_from_slice(include_bytes!("../../../assets/fonts/Literata.ttf")).unwrap();
     font.set_variation(b"wght", 700.0);
     font.set_variation(b"opsz", 72.0);
     let size = 760.0;
-    let g = font.glyph_id('γ').with_scale_and_position(PxScale::from(size), point(0.0, 0.0));
+    let g = font
+        .glyph_id('γ')
+        .with_scale_and_position(PxScale::from(size), point(0.0, 0.0));
     let og = font.outline_glyph(g).unwrap();
     let b = og.px_bounds();
     let (w, h) = (b.width(), b.height());

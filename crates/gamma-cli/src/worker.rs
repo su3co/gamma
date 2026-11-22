@@ -46,28 +46,50 @@ pub fn parse_slice(s: &str, sim: &gamma_sim::Simulation) -> Result<Option<SliceR
 }
 
 fn lightsim_component(s: &str) -> Result<gamma_sim::lightsim_core::grid::Component> {
-    gamma_sim::lightsim_core::grid::Component::parse(s).with_context(|| format!("unknown component {s}"))
+    gamma_sim::lightsim_core::grid::Component::parse(s)
+        .with_context(|| format!("unknown component {s}"))
 }
 
-pub fn run_worker(spec: &Path, device: &str, out: Option<&Path>, slice: &str, every: f64) -> Result<()> {
+pub fn run_worker(
+    spec: &Path,
+    device: &str,
+    out: Option<&Path>,
+    slice: &str,
+    every: f64,
+) -> Result<()> {
     emit(&hello());
     let res = (|| -> Result<()> {
         let sim = gamma_sim::setup::load(spec)?;
         let dev = Device::parse(device)?;
-        let cfg = RunConfig { device: dev, slice: parse_slice(slice, &sim)?, every_s: every };
+        let cfg = RunConfig {
+            device: dev,
+            slice: parse_slice(slice, &sim)?,
+            every_s: every,
+        };
         let cancel = Arc::new(AtomicBool::new(false));
         // SIGTERM/SIGINT end the run with the results so far
         let c2 = cancel.clone();
         let _ = ctrlc_like(move || c2.store(true, Ordering::Relaxed));
         let results = run(&sim, &cfg, cancel, &mut |m| emit(&m))?;
-        let path = out.map(|p| p.to_path_buf()).unwrap_or_else(|| spec.with_file_name("results.json"));
+        let path = out
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| spec.with_file_name("results.json"));
         gamma_core::fsutil::atomic_write(&path, results.to_json().as_bytes())?;
         let s = &results.stats;
-        emit(&Msg::Done { steps: s.steps, seconds: s.seconds, mcells_per_s: s.mcells_per_s, stopped_early: s.stopped_early, results: path.to_string_lossy().into(), backend: s.backend.clone() });
+        emit(&Msg::Done {
+            steps: s.steps,
+            seconds: s.seconds,
+            mcells_per_s: s.mcells_per_s,
+            stopped_early: s.stopped_early,
+            results: path.to_string_lossy().into(),
+            backend: s.backend.clone(),
+        });
         Ok(())
     })();
     if let Err(e) = &res {
-        emit(&Msg::Error { message: format!("{e:#}") });
+        emit(&Msg::Error {
+            message: format!("{e:#}"),
+        });
     }
     res
 }
@@ -76,7 +98,9 @@ pub fn run_worker(spec: &Path, device: &str, out: Option<&Path>, slice: &str, ev
 fn ctrlc_like(f: impl Fn() + Send + 'static) -> Result<()> {
     #[cfg(unix)]
     {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
         std::thread::spawn(move || {
             rt.block_on(async {
                 use tokio::signal::unix::{SignalKind, signal};

@@ -1,0 +1,150 @@
+name: Release
+
+# Tags vX.Y.Z build signed packages for every platform and attach them, with
+# the update feed, to a draft GitHub release. Publishing the release and the
+# feed is a manual step (the owner's decision).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Update channel of this release"
+        default: beta
+        type: choice
+        options: [stable, beta]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CHANNEL: ${{ inputs.channel || (contains(github.ref_name, '-') && 'beta' || 'stable') }}
+
+jobs:
+  macos:
+    name: macOS arm64 (signed, notarised)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      - name: Require every signing secret (fail closed)
+        env:
+          C: ${{ secrets.MACOS_CERTIFICATE }}
+          P: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          I: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          A: ${{ secrets.APPLE_ID }}
+          W: ${{ secrets.APPLE_APP_PASSWORD }}
+          T: ${{ secrets.APPLE_TEAM_ID }}
+          K: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          U: ${{ secrets.UPDATER_PUBLIC_KEY }}
+          B: ${{ vars.GAMMA_UPDATE_BASE }}
+        run: |
+          for v in C P I A W T K U B; do [ -n "${!v}" ] || { echo "missing secret or variable ($v)"; exit 1; }; done
+      - name: Import the Developer ID certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KC=$RUNNER_TEMP/build.keychain-db; KP=$(openssl rand -hex 16)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security create-keychain -p "$KP" "$KC" && security set-keychain-settings -lut 3600 "$KC" && security unlock-keychain -p "$KP" "$KC"
+          security import $RUNNER_TEMP/cert.p12 -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          rm -f $RUNNER_TEMP/cert.p12
+          security list-keychain -d user -s "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KP" "$KC" >/dev/null
+      - name: Build, sign and notarise
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          UPDATER_PUBLIC_KEY: ${{ secrets.UPDATER_PUBLIC_KEY }}
+          GAMMA_UPDATE_BASE: ${{ vars.GAMMA_UPDATE_BASE }}
+        run: |
+          echo "$UPDATER_PUBLIC_KEY" > $RUNNER_TEMP/updater.pub
+          GAMMA_UPDATER_PUBKEY_FILE=$RUNNER_TEMP/updater.pub scripts/package.sh
+          xcrun stapler validate target/release/bundle/dmg/*.dmg
+          spctl --assess --type open --context context:primary-signature --verbose=4 target/release/bundle/dmg/*.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.tar.gz
+            target/release/bundle/macos/*.tar.gz.sig
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build AppImage, .deb and .rpm in the build container (CUDA-enabled gamma)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          UPDATER_PUBLIC_KEY: ${{ secrets.UPDATER_PUBLIC_KEY }}
+          GAMMA_UPDATE_BASE: ${{ vars.GAMMA_UPDATE_BASE }}
+        run: |
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && [ -n "$UPDATER_PUBLIC_KEY" ] || { echo "missing updater keys"; exit 1; }
+          echo "$UPDATER_PUBLIC_KEY" > $RUNNER_TEMP/updater.pub
+          echo "$TAURI_SIGNING_PRIVATE_KEY" > $RUNNER_TEMP/updater.key
+          GAMMA_UPDATER_PUBKEY_FILE=$RUNNER_TEMP/updater.pub TAURI_SIGNING_PRIVATE_KEY_PATH=$RUNNER_TEMP/updater.key packaging/linux/build.sh
+          rm -f $RUNNER_TEMP/updater.key
+      - name: Remote worker program (for GPU servers)
+        run: |
+          mkdir -p dist && cp target-linux/release/gamma dist/gamma-linux-${{ matrix.arch }}-cuda && (cd dist && sha256sum * > SHA256SUMS-${{ matrix.arch }})
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            target-linux/release/bundle/appimage/*.AppImage
+            target-linux/release/bundle/appimage/*.AppImage.sig
+            target-linux/release/bundle/deb/*.deb
+            target-linux/release/bundle/rpm/*.rpm
+            dist/*
+
+  release:
+    name: Draft release and update feed
+    needs: [macos, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Update feed
+        env:
+          GAMMA_UPDATE_BASE: ${{ vars.GAMMA_UPDATE_BASE }}
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          A=()
+          f=$(ls artifacts/macos-arm64/macos/*.tar.gz 2>/dev/null | head -1); [ -n "$f" ] && A+=(--artifact "darwin-aarch64=$f")
+          f=$(ls artifacts/linux-x86_64/target-linux/release/bundle/appimage/*.AppImage 2>/dev/null | head -1); [ -n "$f" ] && A+=(--artifact "linux-x86_64=$f")
+          f=$(ls artifacts/linux-aarch64/target-linux/release/bundle/appimage/*.AppImage 2>/dev/null | head -1); [ -n "$f" ] && A+=(--artifact "linux-aarch64=$f")
+          python3 packaging/make-feed.py --version "$V" --channel "$CHANNEL" --notes CHANGELOG.md --base "$GAMMA_UPDATE_BASE" "${A[@]}" --out feed
+          tar czf update-feed-$V.tar.gz -C feed .
+      - name: Package repositories (apt and dnf, unsigned metadata until the owner's repository key is set)
+        run: packaging/linux/make-repos.sh artifacts repos && tar czf linux-repos.tar.gz -C repos .
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          awk "/^## \\[?$V\\]?/{f=1;next} /^## /{f=0} f" CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" --draft --title "gamma $V" --notes-file notes.md \
+            $(find artifacts -type f \( -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "gamma-linux-*" -o -name "SHA256SUMS-*" \)) \
+            update-feed-$V.tar.gz linux-repos.tar.gz

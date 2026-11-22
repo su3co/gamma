@@ -18,7 +18,9 @@
         "minWidth": 960,
         "minHeight": 620,
         "backgroundColor": "#0c0e12",
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "label": "main",
+        "create": false
       }
     ],
     "security": {
@@ -27,33 +29,75 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg", "appimage", "deb", "rpm", "nsis"],
+    "targets": [
+      "app",
+      "dmg",
+      "appimage",
+      "deb",
+      "rpm",
+      "nsis"
+    ],
     "createUpdaterArtifacts": true,
     "category": "DeveloperTool",
     "shortDescription": "Design, simulate and test photonic integrated circuits",
     "longDescription": "gamma is an open-source workspace for photonic integrated circuits: layout, 3-D, simulation set-up, GPU FDTD runs with lightsim (locally or on remote GPU servers) and results, built for AI agents.",
     "copyright": "Copyright (c) 2026 SU3 Labs",
     "licenseFile": "../../LICENSE",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "externalBin": ["binaries/gamma"],
-    "resources": { "../ui/dist/": "ui/" },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/gamma"
+    ],
+    "resources": {
+      "../ui/dist/": "ui/"
+    },
     "macOS": {
       "minimumSystemVersion": "13.0",
       "hardenedRuntime": true,
       "entitlements": "entitlements.plist"
     },
     "linux": {
-      "deb": { "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0", "git", "openssh-client"], "section": "science" },
-      "rpm": { "depends": ["webkit2gtk4.1", "gtk3", "git", "openssh-clients"] },
-      "appimage": { "bundleMediaFramework": false }
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "git",
+          "openssh-client"
+        ],
+        "section": "science"
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "git",
+          "openssh-clients"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
     },
-    "windows": { "nsis": { "installMode": "currentUser" } }
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   },
   "plugins": {
     "updater": {
       "pubkey": "REPLACED_BY_SCRIPTS",
-      "endpoints": ["https://updates.invalid/gamma/{{target}}/{{arch}}/{{current_version}}"],
-      "windows": { "installMode": "passive" }
+      "endpoints": [
+        "https://updates.invalid/gamma/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

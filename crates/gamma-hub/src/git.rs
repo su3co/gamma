@@ -7,19 +7,34 @@ use std::path::Path;
 use std::process::Command;
 
 fn git(root: &Path, args: &[&str]) -> Result<String> {
-    let out = Command::new("git").arg("-C").arg(root).args(args).output().context("running git (is it installed?)")?;
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .context("running git (is it installed?)")?;
     if !out.status.success() {
-        bail!("git {} failed: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
+        bail!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
 pub fn available() -> bool {
-    Command::new("git").arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("git")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 pub fn is_repo(root: &Path) -> bool {
-    git(root, &["rev-parse", "--is-inside-work-tree"]).map(|s| s.trim() == "true").unwrap_or(false)
+    git(root, &["rev-parse", "--is-inside-work-tree"])
+        .map(|s| s.trim() == "true")
+        .unwrap_or(false)
 }
 
 pub fn init(root: &Path) -> Result<()> {
@@ -31,10 +46,16 @@ pub fn init(root: &Path) -> Result<()> {
 
 fn identity_args(root: &Path) -> Vec<String> {
     let mut a = vec![];
-    if git(root, &["config", "user.name"]).map(|s| s.trim().is_empty()).unwrap_or(true) {
+    if git(root, &["config", "user.name"])
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
         a.extend(["-c".to_string(), "user.name=gamma".to_string()]);
     }
-    if git(root, &["config", "user.email"]).map(|s| s.trim().is_empty()).unwrap_or(true) {
+    if git(root, &["config", "user.email"])
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
         a.extend(["-c".to_string(), "user.email=gamma@localhost".to_string()]);
     }
     a
@@ -60,7 +81,13 @@ pub fn checkpoint(root: &Path, message: &str, actor: &str) -> Result<Option<Chec
     if changed || !has_head {
         let msg = format!("{message}\n\nGamma-Actor: {actor}\nGamma-Checkpoint: {n}");
         let mut args: Vec<String> = identity_args(root);
-        args.extend(["commit".into(), "-q".into(), "--allow-empty".into(), "-m".into(), msg]);
+        args.extend([
+            "commit".into(),
+            "-q".into(),
+            "--allow-empty".into(),
+            "-m".into(),
+            msg,
+        ]);
         let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         git(root, &refs)?;
     } else {
@@ -79,7 +106,14 @@ pub fn list(root: &Path) -> Result<Vec<Checkpoint>> {
     if !is_repo(root) {
         return Ok(vec![]);
     }
-    let out = git(root, &["for-each-ref", "refs/tags/gamma/checkpoint/", "--format=%(refname:short)%09%(*objectname)%(objectname)%09%(creatordate:iso-strict)%09%(contents:subject)%09%(contents)"]);
+    let out = git(
+        root,
+        &[
+            "for-each-ref",
+            "refs/tags/gamma/checkpoint/",
+            "--format=%(refname:short)%09%(*objectname)%(objectname)%09%(creatordate:iso-strict)%09%(contents:subject)%09%(contents)",
+        ],
+    );
     let Ok(out) = out else { return Ok(vec![]) };
     let mut v = vec![];
     for line in out.lines() {
@@ -87,11 +121,25 @@ pub fn list(root: &Path) -> Result<Vec<Checkpoint>> {
         if f.len() < 4 {
             continue;
         }
-        let Some(n) = f[0].rsplit('/').next().and_then(|s| s.parse().ok()) else { continue };
-        let commit = git(root, &["rev-list", "-n", "1", f[0]]).map(|s| s.trim().to_string()).unwrap_or_default();
+        let Some(n) = f[0].rsplit('/').next().and_then(|s| s.parse().ok()) else {
+            continue;
+        };
+        let commit = git(root, &["rev-list", "-n", "1", f[0]])
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
         let body = git(root, &["log", "-1", "--format=%B", &commit]).unwrap_or_default();
-        let actor = body.lines().find_map(|l| l.strip_prefix("Gamma-Actor: ")).unwrap_or("person").to_string();
-        v.push(Checkpoint { n, commit, time: f[2].into(), message: f[3].into(), actor });
+        let actor = body
+            .lines()
+            .find_map(|l| l.strip_prefix("Gamma-Actor: "))
+            .unwrap_or("person")
+            .to_string();
+        v.push(Checkpoint {
+            n,
+            commit,
+            time: f[2].into(),
+            message: f[3].into(),
+            actor,
+        });
     }
     v.sort_by_key(|c| c.n);
     Ok(v)
@@ -99,7 +147,11 @@ pub fn list(root: &Path) -> Result<Vec<Checkpoint>> {
 
 /// A file as it was at a commit.
 pub fn show(root: &Path, commit: &str, rel: &str) -> Result<Vec<u8>> {
-    let out = Command::new("git").arg("-C").arg(root).args(["show", &format!("{commit}:{rel}")]).output()?;
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["show", &format!("{commit}:{rel}")])
+        .output()?;
     if !out.status.success() {
         bail!("{rel} is not in commit {commit}");
     }
@@ -108,7 +160,10 @@ pub fn show(root: &Path, commit: &str, rel: &str) -> Result<Vec<u8>> {
 
 /// Files changed between two commits.
 pub fn changed_files(root: &Path, a: &str, b: &str) -> Result<Vec<String>> {
-    Ok(git(root, &["diff", "--name-status", a, b])?.lines().map(|s| s.to_string()).collect())
+    Ok(git(root, &["diff", "--name-status", a, b])?
+        .lines()
+        .map(|s| s.to_string())
+        .collect())
 }
 
 pub fn text_diff(root: &Path, a: &str, b: &str) -> Result<String> {

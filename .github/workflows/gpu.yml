@@ -1,0 +1,25 @@
+name: GPU tests
+
+# Runs on self-hosted runners on the owner's GPU machines, once they are
+# installed (labels: self-hosted, linux, gpu, and x64 or arm64). Until then
+# the same script is run by hand and the results recorded in docs/test-runs/.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  gpu:
+    name: CUDA runs (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    runs-on: [self-hosted, linux, gpu, "${{ matrix.arch }}"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/build-cuda.sh
+      - run: scripts/gpu-test.sh

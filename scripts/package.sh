@@ -15,6 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
+TARGET=${CARGO_TARGET_DIR:-target}
 
 echo "== interface"
 (cd app/ui && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null)
@@ -23,7 +24,7 @@ echo "== gamma program ($TRIPLE)"
 if [ "${GAMMA_CUDA:-0}" = "1" ]; then scripts/build-cuda.sh >/dev/null; else cargo build --release -p gamma-cli >/dev/null; fi
 mkdir -p app/src-tauri/binaries
 EXT=""; [[ "$TRIPLE" == *windows* ]] && EXT=".exe"
-cp "target/release/gamma$EXT" "app/src-tauri/binaries/gamma-$TRIPLE$EXT"
+cp "$TARGET/release/gamma$EXT" "app/src-tauri/binaries/gamma-$TRIPLE$EXT"
 
 echo "== app bundles"
 if [ -n "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ] && [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
@@ -32,7 +33,9 @@ fi
 CONFIG='{}'
 if [ -n "${GAMMA_UPDATER_PUBKEY_FILE:-}" ]; then
   KEY=$(tr -d '\n' < "$GAMMA_UPDATER_PUBKEY_FILE")
-  CONFIG=$(printf '{"plugins":{"updater":{"pubkey":"%s"}}}' "$KEY")
+  INSECURE=false
+  case "${GAMMA_UPDATE_BASE:-}" in http://127.0.0.1*|http://localhost*) INSECURE=true; echo "   (test build: plain http allowed for a feed on this machine)";; esac
+  CONFIG=$(printf '{"plugins":{"updater":{"pubkey":"%s","dangerousInsecureTransportProtocol":%s}}}' "$KEY" "$INSECURE")
 else
   echo "   (no GAMMA_UPDATER_PUBKEY_FILE: the app will refuse every update)"
   CONFIG='{"bundle":{"createUpdaterArtifacts":false}}'
@@ -42,8 +45,8 @@ case "$(uname -s)" in
   Linux) BUNDLES="appimage,deb,rpm" ;;
   *) BUNDLES="nsis" ;;
 esac
-VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+VERSION=${GAMMA_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)}
 (cd app && CI=${CI:-true} ui/node_modules/.bin/tauri build --bundles "$BUNDLES" --config "$CONFIG" --config "{\"version\":\"$VERSION\"}")
-OUT="$ROOT/target/release/bundle"
+case "$TARGET" in /*) OUT="$TARGET/release/bundle";; *) OUT="$ROOT/$TARGET/release/bundle";; esac
 echo "== built"
 find "$OUT" -maxdepth 2 \( -name "*.dmg" -o -name "*.app" -o -name "*.tar.gz" -o -name "*.sig" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.exe" \) | sed "s|$ROOT/||"

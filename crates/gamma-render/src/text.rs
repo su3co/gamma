@@ -28,7 +28,16 @@ pub fn width(face: Face, size: f32, s: &str) -> f32 {
 }
 
 /// Draw `s` with its baseline at y; `align` 0 = left, 0.5 = centre, 1 = right.
-pub fn draw(pm: &mut Pixmap, face: Face, size: f32, x: f32, y: f32, align: f32, rgba: [u8; 4], s: &str) {
+pub fn draw(
+    pm: &mut Pixmap,
+    face: Face,
+    size: f32,
+    x: f32,
+    y: f32,
+    align: f32,
+    rgba: [u8; 4],
+    s: &str,
+) {
     let f = font(face);
     let sf = f.as_scaled(PxScale::from(size));
     let mut cx = x - align * width(face, size, s);

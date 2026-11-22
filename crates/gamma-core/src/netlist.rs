@@ -22,14 +22,21 @@ impl Netlist {
         m.insert(key("placements"), Value::Mapping(Mapping::new()));
         m.insert(key("routes"), Value::Mapping(Mapping::new()));
         m.insert(key("ports"), Value::Mapping(Mapping::new()));
-        Netlist { doc: Value::Mapping(m) }
+        Netlist {
+            doc: Value::Mapping(m),
+        }
     }
 
     pub fn load(path: &Path) -> Result<Netlist> {
-        let t = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let doc: Value = serde_yaml::from_str(&t).with_context(|| format!("{} is not valid YAML", path.display()))?;
+        let t =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let doc: Value = serde_yaml::from_str(&t)
+            .with_context(|| format!("{} is not valid YAML", path.display()))?;
         if !doc.is_mapping() {
-            bail!("{} is not a gdsfactory netlist (expected a mapping)", path.display());
+            bail!(
+                "{} is not a gdsfactory netlist (expected a mapping)",
+                path.display()
+            );
         }
         Ok(Netlist { doc })
     }
@@ -47,18 +54,28 @@ impl Netlist {
     }
 
     /// Add or replace an instance of `component` (a gdsfactory cell name) with settings.
-    pub fn place(&mut self, name: &str, component: &str, settings: Option<serde_json::Value>, x: f64, y: f64, rotation: f64, mirror: bool) -> Result<()> {
+    pub fn place(
+        &mut self,
+        name: &str,
+        component: &str,
+        settings: Option<serde_json::Value>,
+        x: f64,
+        y: f64,
+        rotation: f64,
+        mirror: bool,
+    ) -> Result<()> {
         if name.is_empty() || name.contains(' ') || name.contains(',') {
             bail!("instance name '{name}' must be non-empty without spaces or commas");
         }
         let mut inst = Mapping::new();
         inst.insert(key("component"), key(component));
-        if let Some(s) = settings {
-            if !s.is_null() {
-                inst.insert(key("settings"), serde_yaml::to_value(s)?);
-            }
+        if let Some(s) = settings
+            && !s.is_null()
+        {
+            inst.insert(key("settings"), serde_yaml::to_value(s)?);
         }
-        self.section("instances").insert(key(name), Value::Mapping(inst));
+        self.section("instances")
+            .insert(key(name), Value::Mapping(inst));
         let mut pl = Mapping::new();
         pl.insert(key("x"), Value::from(x));
         pl.insert(key("y"), Value::from(y));
@@ -68,7 +85,8 @@ impl Netlist {
         if mirror {
             pl.insert(key("mirror"), Value::Bool(true));
         }
-        self.section("placements").insert(key(name), Value::Mapping(pl));
+        self.section("placements")
+            .insert(key(name), Value::Mapping(pl));
         Ok(())
     }
 
@@ -79,7 +97,14 @@ impl Netlist {
         let prefix = format!("{name},");
         for sec in ["connections"] {
             let m = self.section(sec);
-            let ks: Vec<Value> = m.iter().filter(|(k, v)| k.as_str().map(|s| s.starts_with(&prefix)).unwrap_or(false) || v.as_str().map(|s| s.starts_with(&prefix)).unwrap_or(false)).map(|(k, _)| k.clone()).collect();
+            let ks: Vec<Value> = m
+                .iter()
+                .filter(|(k, v)| {
+                    k.as_str().map(|s| s.starts_with(&prefix)).unwrap_or(false)
+                        || v.as_str().map(|s| s.starts_with(&prefix)).unwrap_or(false)
+                })
+                .map(|(k, _)| k.clone())
+                .collect();
             for k in ks {
                 m.remove(k);
             }
@@ -88,15 +113,27 @@ impl Netlist {
     }
 
     /// Route `a` (`inst,port`) to `b` with a gdsfactory router in route bundle `bundle`.
-    pub fn route(&mut self, bundle: &str, a: &str, b: &str, cross_section: Option<&str>) -> Result<()> {
+    pub fn route(
+        &mut self,
+        bundle: &str,
+        a: &str,
+        b: &str,
+        cross_section: Option<&str>,
+    ) -> Result<()> {
         for p in [a, b] {
-            let (inst, _) = p.split_once(',').with_context(|| format!("'{p}' should be instance,port"))?;
+            let (inst, _) = p
+                .split_once(',')
+                .with_context(|| format!("'{p}' should be instance,port"))?;
             if !self.section("instances").contains_key(key(inst)) {
                 bail!("no instance '{inst}' in the netlist");
             }
         }
         let routes = self.section("routes");
-        if !routes.get(key(bundle)).map(|v| v.is_mapping()).unwrap_or(false) {
+        if !routes
+            .get(key(bundle))
+            .map(|v| v.is_mapping())
+            .unwrap_or(false)
+        {
             let mut r = Mapping::new();
             r.insert(key("links"), Value::Mapping(Mapping::new()));
             if let Some(xs) = cross_section {
@@ -106,11 +143,19 @@ impl Netlist {
             }
             routes.insert(key(bundle), Value::Mapping(r));
         }
-        let r = routes.get_mut(key(bundle)).unwrap().as_mapping_mut().unwrap();
+        let r = routes
+            .get_mut(key(bundle))
+            .unwrap()
+            .as_mapping_mut()
+            .unwrap();
         if !r.get(key("links")).map(|v| v.is_mapping()).unwrap_or(false) {
             r.insert(key("links"), Value::Mapping(Mapping::new()));
         }
-        r.get_mut(key("links")).unwrap().as_mapping_mut().unwrap().insert(key(a), key(b));
+        r.get_mut(key("links"))
+            .unwrap()
+            .as_mapping_mut()
+            .unwrap()
+            .insert(key(a), key(b));
         Ok(())
     }
 
@@ -128,7 +173,19 @@ impl Netlist {
         self.doc
             .get("instances")
             .and_then(|v| v.as_mapping())
-            .map(|m| m.iter().map(|(k, v)| (k.as_str().unwrap_or("").to_string(), v.get("component").and_then(|c| c.as_str()).unwrap_or("").to_string())).collect())
+            .map(|m| {
+                m.iter()
+                    .map(|(k, v)| {
+                        (
+                            k.as_str().unwrap_or("").to_string(),
+                            v.get("component")
+                                .and_then(|c| c.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                        )
+                    })
+                    .collect()
+            })
             .unwrap_or_default()
     }
 }
@@ -139,8 +196,18 @@ mod tests {
     #[test]
     fn edit_netlist() {
         let mut n = Netlist::new("top");
-        n.place("mmi", "mmi1x2", Some(serde_json::json!({"length_mmi": 5.5})), 0.0, 0.0, 0.0, false).unwrap();
-        n.place("s1", "straight", None, 30.0, 10.0, 0.0, false).unwrap();
+        n.place(
+            "mmi",
+            "mmi1x2",
+            Some(serde_json::json!({"length_mmi": 5.5})),
+            0.0,
+            0.0,
+            0.0,
+            false,
+        )
+        .unwrap();
+        n.place("s1", "straight", None, 30.0, 10.0, 0.0, false)
+            .unwrap();
         n.route("r1", "mmi,o2", "s1,o1", Some("strip")).unwrap();
         n.expose("o1", "mmi,o1");
         assert!(n.route("r2", "x,o1", "s1,o2", None).is_err());

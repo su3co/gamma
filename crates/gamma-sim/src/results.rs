@@ -3,9 +3,9 @@
 //! maps, time series, far fields and the energy decay.
 
 use anyhow::{Context, Result, bail};
+use lightsim_core::Simulation;
 use lightsim_core::constants::C0;
 use lightsim_core::grid::Component;
-use lightsim_core::Simulation;
 use num_complex::Complex64;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -18,9 +18,14 @@ pub struct Loaded {
 
 impl Loaded {
     pub fn read(results: &Path, spec: &Simulation) -> Result<Loaded> {
-        let text = std::fs::read_to_string(results).with_context(|| format!("reading {}", results.display()))?;
-        let v: Value = serde_json::from_str(&text).with_context(|| format!("{} is not a lightsim results file", results.display()))?;
-        Ok(Loaded { results: v, sim: spec.clone() })
+        let text = std::fs::read_to_string(results)
+            .with_context(|| format!("reading {}", results.display()))?;
+        let v: Value = serde_json::from_str(&text)
+            .with_context(|| format!("{} is not a lightsim results file", results.display()))?;
+        Ok(Loaded {
+            results: v,
+            sim: spec.clone(),
+        })
     }
 }
 
@@ -42,9 +47,10 @@ pub struct Overview {
     pub metrics: Value,
 }
 
-
 fn f64s(v: &Value) -> Vec<f64> {
-    v.as_array().map(|a| a.iter().filter_map(|x| x.as_f64()).collect()).unwrap_or_default()
+    v.as_array()
+        .map(|a| a.iter().filter_map(|x| x.as_f64()).collect())
+        .unwrap_or_default()
 }
 
 pub fn overview(l: &Loaded) -> Result<Overview> {
@@ -64,7 +70,12 @@ pub fn overview(l: &Loaded) -> Result<Overview> {
             "energy" => vec!["time_series"],
             _ => vec![],
         };
-        monitors.push(MonitorView { name, ty, views, freqs: nf });
+        monitors.push(MonitorView {
+            name,
+            ty,
+            views,
+            freqs: nf,
+        });
     }
     let sp = sparams(l).ok().flatten();
     let mut stats = r["stats"].clone();
@@ -73,7 +84,12 @@ pub fn overview(l: &Loaded) -> Result<Overview> {
         o.remove("energy");
         o.remove("energy_steps");
     }
-    Ok(Overview { stats, monitors, metrics: metrics(l, sp.as_ref()), sparams: sp })
+    Ok(Overview {
+        stats,
+        monitors,
+        metrics: metrics(l, sp.as_ref()),
+        sparams: sp,
+    })
 }
 
 /// Scalar figures a result diff compares.
@@ -91,7 +107,10 @@ pub fn metrics(l: &Loaded, sp: Option<&SParams>) -> Value {
         let mid = sp.wavelengths.len() / 2;
         for e in &sp.entries {
             if let Some(db) = e.db.get(mid) {
-                m.insert(format!("S.{}.dB@{:.1}nm", e.name, sp.wavelengths[mid] * 1e9), json!(db));
+                m.insert(
+                    format!("S.{}.dB@{:.1}nm", e.name, sp.wavelengths[mid] * 1e9),
+                    json!(db),
+                );
             }
         }
     }
@@ -99,7 +118,10 @@ pub fn metrics(l: &Loaded, sp: Option<&SParams>) -> Value {
         for (name, v) in fl {
             let a = f64s(v);
             if !a.is_empty() {
-                m.insert(format!("flux.{name}.max"), json!(a.iter().cloned().fold(f64::NEG_INFINITY, f64::max)));
+                m.insert(
+                    format!("flux.{name}.max"),
+                    json!(a.iter().cloned().fold(f64::NEG_INFINITY, f64::max)),
+                );
             }
         }
     }
@@ -121,7 +143,11 @@ pub struct Series {
 }
 
 fn monitor_freqs(sj: &Value, name: &str) -> Vec<f64> {
-    sj["monitors"].as_array().and_then(|a| a.iter().find(|m| m["name"] == name)).map(|m| f64s(&m["freqs"])).unwrap_or_default()
+    sj["monitors"]
+        .as_array()
+        .and_then(|a| a.iter().find(|m| m["name"] == name))
+        .map(|m| f64s(&m["freqs"]))
+        .unwrap_or_default()
 }
 
 pub fn spectrum(l: &Loaded, monitor: &str) -> Result<Spectrum> {
@@ -133,12 +159,21 @@ pub fn spectrum(l: &Loaded, monitor: &str) -> Result<Spectrum> {
         let ap = mode_amps(m, "plus");
         let am = mode_amps(m, "minus");
         for (k, (p, q)) in ap.iter().zip(&am).enumerate() {
-            series.push(Series { name: format!("mode {k} +"), values: p.iter().map(|c| c.norm_sqr()).collect() });
-            series.push(Series { name: format!("mode {k} -"), values: q.iter().map(|c| c.norm_sqr()).collect() });
+            series.push(Series {
+                name: format!("mode {k} +"),
+                values: p.iter().map(|c| c.norm_sqr()).collect(),
+            });
+            series.push(Series {
+                name: format!("mode {k} -"),
+                values: q.iter().map(|c| c.norm_sqr()).collect(),
+            });
         }
     }
     if let Some(f) = r["flux"].get(monitor) {
-        series.push(Series { name: "flux".into(), values: f64s(f) });
+        series.push(Series {
+            name: "flux".into(),
+            values: f64s(f),
+        });
     }
     if series.is_empty() {
         bail!("monitor '{monitor}' has no spectrum in these results");
@@ -153,14 +188,30 @@ pub fn spectrum(l: &Loaded, monitor: &str) -> Result<Spectrum> {
             s.values = order.iter().map(|&i| s.values[i]).collect();
         }
     }
-    Ok(Spectrum { monitor: monitor.into(), wavelengths: wl, series, unit: "W (source-weighted, arbitrary scale)".into() })
+    Ok(Spectrum {
+        monitor: monitor.into(),
+        wavelengths: wl,
+        series,
+        unit: "W (source-weighted, arbitrary scale)".into(),
+    })
 }
 
 fn mode_amps(m: &Value, dir: &str) -> Vec<Vec<Complex64>> {
     let re = &m[format!("amp_{dir}_re")];
     let im = &m[format!("amp_{dir}_im")];
-    let (Some(re), Some(im)) = (re.as_array(), im.as_array()) else { return vec![] };
-    re.iter().zip(im).map(|(a, b)| f64s(a).into_iter().zip(f64s(b)).map(|(x, y)| Complex64::new(x, y)).collect()).collect()
+    let (Some(re), Some(im)) = (re.as_array(), im.as_array()) else {
+        return vec![];
+    };
+    re.iter()
+        .zip(im)
+        .map(|(a, b)| {
+            f64s(a)
+                .into_iter()
+                .zip(f64s(b))
+                .map(|(x, y)| Complex64::new(x, y))
+                .collect()
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -187,18 +238,38 @@ pub struct SParams {
 pub fn sparams(l: &Loaded) -> Result<Option<SParams>> {
     use lightsim_core::monitors::Monitor as M;
     use lightsim_core::sources::Source as S;
-    let srcs: Vec<&S> = l.sim.sources.iter().filter(|s| matches!(s, S::Mode { .. })).collect();
+    let srcs: Vec<&S> = l
+        .sim
+        .sources
+        .iter()
+        .filter(|s| matches!(s, S::Mode { .. }))
+        .collect();
     if srcs.len() != 1 || l.sim.sources.len() != 1 {
         return Ok(None);
     }
-    let S::Mode { axis: sa, position: sp, direction, name: sname, .. } = srcs[0] else { return Ok(None) };
+    let S::Mode {
+        axis: sa,
+        position: sp,
+        direction,
+        name: sname,
+        ..
+    } = srcs[0]
+    else {
+        return Ok(None);
+    };
     let sign = direction.sign();
     let mons: Vec<(&str, usize, f64, &Vec<f64>)> = l
         .sim
         .monitors
         .iter()
         .filter_map(|m| match m {
-            M::Mode { name, axis, position, freqs, .. } => Some((name.as_str(), *axis, *position, freqs)),
+            M::Mode {
+                name,
+                axis,
+                position,
+                freqs,
+                ..
+            } => Some((name.as_str(), *axis, *position, freqs)),
             _ => None,
         })
         .collect();
@@ -212,7 +283,11 @@ pub fn sparams(l: &Loaded) -> Result<Option<SParams>> {
         .min_by(|a, b| ((a.2 - sp).abs()).partial_cmp(&(b.2 - sp).abs()).unwrap());
     let Some(input) = input else { return Ok(None) };
     let r = &l.results;
-    let amp = |name: &str, plus: bool| -> Option<Vec<Complex64>> { mode_amps(r["modes"].get(name)?, if plus { "plus" } else { "minus" }).into_iter().next() };
+    let amp = |name: &str, plus: bool| -> Option<Vec<Complex64>> {
+        mode_amps(r["modes"].get(name)?, if plus { "plus" } else { "minus" })
+            .into_iter()
+            .next()
+    };
     let a_in = amp(input.0, sign > 0.0).context("input monitor has no amplitudes")?;
     let center: [f64; 3] = [0, 1, 2].map(|a| 0.5 * (l.sim.region.min[a] + l.sim.region.max[a]));
     let port = |n: &str| n.strip_prefix("m_").unwrap_or(n).to_string();
@@ -225,10 +300,23 @@ pub fn sparams(l: &Loaded) -> Result<Option<SParams>> {
             amp(m.0, m.2 > center[m.1]) // leaving the device, away from its centre
         };
         let Some(out) = out else { continue };
-        let s: Vec<Complex64> = out.iter().zip(&a_in).map(|(o, i)| if i.norm() > 0.0 { o / i } else { Complex64::new(0.0, 0.0) }).collect();
+        let s: Vec<Complex64> = out
+            .iter()
+            .zip(&a_in)
+            .map(|(o, i)| {
+                if i.norm() > 0.0 {
+                    o / i
+                } else {
+                    Complex64::new(0.0, 0.0)
+                }
+            })
+            .collect();
         entries.push(SEntry {
             name: format!("{}@0,{}@0", port(m.0), in_port),
-            db: s.iter().map(|c| 10.0 * c.norm_sqr().max(1e-30).log10()).collect(),
+            db: s
+                .iter()
+                .map(|c| 10.0 * c.norm_sqr().max(1e-30).log10())
+                .collect(),
             phase: s.iter().map(|c| c.arg()).collect(),
             abs2: s.iter().map(|c| c.norm_sqr()).collect(),
         });
@@ -261,32 +349,78 @@ pub struct FieldMap {
 /// A plane of a frequency-domain monitor: `|E|^2`, `|H|^2`, or one component's
 /// real part, magnitude or phase (`Ey`, `abs(Ey)`, `phase(Ey)`).
 pub fn field_map(l: &Loaded, monitor: &str, quantity: &str, freq_index: usize) -> Result<FieldMap> {
-    let d = l.results["dft"].get(monitor).with_context(|| format!("no frequency-domain monitor '{monitor}' in these results"))?;
+    let d = l.results["dft"]
+        .get(monitor)
+        .with_context(|| format!("no frequency-domain monitor '{monitor}' in these results"))?;
     let freqs = f64s(&d["freqs"]);
     let fields = d["fields"].as_array().context("monitor has no fields")?;
     let grid = l.sim.build_grid()?;
     let fi = freq_index.min(freqs.len().saturating_sub(1));
-    let comp_names: Vec<String> = fields.iter().filter_map(|f| f["comp"].as_str().map(|s| s.to_string())).collect();
+    let comp_names: Vec<String> = fields
+        .iter()
+        .filter_map(|f| f["comp"].as_str().map(|s| s.to_string()))
+        .collect();
     let (wanted, mode): (Vec<String>, &str) = if quantity == "|E|2" || quantity == "|E|^2" {
-        (comp_names.iter().filter(|c| c.starts_with('E')).cloned().collect(), "sum2")
+        (
+            comp_names
+                .iter()
+                .filter(|c| c.starts_with('E'))
+                .cloned()
+                .collect(),
+            "sum2",
+        )
     } else if quantity == "|H|2" || quantity == "|H|^2" {
-        (comp_names.iter().filter(|c| c.starts_with('H')).cloned().collect(), "sum2")
-    } else if let Some(c) = quantity.strip_prefix("abs(").and_then(|s| s.strip_suffix(')')) {
+        (
+            comp_names
+                .iter()
+                .filter(|c| c.starts_with('H'))
+                .cloned()
+                .collect(),
+            "sum2",
+        )
+    } else if let Some(c) = quantity
+        .strip_prefix("abs(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         (vec![c.to_string()], "abs")
-    } else if let Some(c) = quantity.strip_prefix("phase(").and_then(|s| s.strip_suffix(')')) {
+    } else if let Some(c) = quantity
+        .strip_prefix("phase(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
         (vec![c.to_string()], "phase")
     } else {
         (vec![quantity.to_string()], "re")
     };
     if wanted.is_empty() {
-        bail!("monitor '{monitor}' records {}; '{quantity}' needs other components", comp_names.join(", "));
+        bail!(
+            "monitor '{monitor}' records {}; '{quantity}' needs other components",
+            comp_names.join(", ")
+        );
     }
     // common box of the wanted components (Yee components differ by a sample)
     let mut entries = vec![];
     for w in &wanted {
-        let f = fields.iter().find(|f| f["comp"] == w.as_str()).with_context(|| format!("monitor '{monitor}' did not record {w}; it records {}", comp_names.join(", ")))?;
-        let origin: Vec<usize> = f["origin"].as_array().context("origin")?.iter().map(|x| x.as_u64().unwrap_or(0) as usize).collect();
-        let dims: Vec<usize> = f["dims"].as_array().context("dims")?.iter().map(|x| x.as_u64().unwrap_or(0) as usize).collect();
+        let f = fields
+            .iter()
+            .find(|f| f["comp"] == w.as_str())
+            .with_context(|| {
+                format!(
+                    "monitor '{monitor}' did not record {w}; it records {}",
+                    comp_names.join(", ")
+                )
+            })?;
+        let origin: Vec<usize> = f["origin"]
+            .as_array()
+            .context("origin")?
+            .iter()
+            .map(|x| x.as_u64().unwrap_or(0) as usize)
+            .collect();
+        let dims: Vec<usize> = f["dims"]
+            .as_array()
+            .context("dims")?
+            .iter()
+            .map(|x| x.as_u64().unwrap_or(0) as usize)
+            .collect();
         entries.push((w.clone(), origin, dims, f64s(&f["re"]), f64s(&f["im"])));
     }
     let dims0 = &entries[0].2;
@@ -307,7 +441,10 @@ pub fn field_map(l: &Loaded, monitor: &str, quantity: &str, freq_index: usize) -
                 ijk[axes[0]] = iu;
                 ijk[axes[1]] = iv;
                 let idx = ((fi * nx + ijk[0]) * ny + ijk[1]) * nz + ijk[2];
-                let c = Complex64::new(re.get(idx).copied().unwrap_or(0.0), im.get(idx).copied().unwrap_or(0.0));
+                let c = Complex64::new(
+                    re.get(idx).copied().unwrap_or(0.0),
+                    im.get(idx).copied().unwrap_or(0.0),
+                );
                 let val = match mode {
                     "sum2" => c.norm_sqr(),
                     "abs" => c.norm(),
@@ -321,8 +458,12 @@ pub fn field_map(l: &Loaded, monitor: &str, quantity: &str, freq_index: usize) -
     }
     let comp0 = Component::parse(&entries[0].0).unwrap_or(Component::Ex);
     let o = &entries[0].1;
-    let u: Vec<f64> = (0..nu).map(|i| grid.position(comp0, axes[0], o[axes[0]] + i)).collect();
-    let v: Vec<f64> = (0..nv).map(|i| grid.position(comp0, axes[1], o[axes[1]] + i)).collect();
+    let u: Vec<f64> = (0..nu)
+        .map(|i| grid.position(comp0, axes[0], o[axes[0]] + i))
+        .collect();
+    let v: Vec<f64> = (0..nv)
+        .map(|i| grid.position(comp0, axes[1], o[axes[1]] + i))
+        .collect();
     let lo = data.iter().cloned().fold(f32::INFINITY, f32::min);
     let hi = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     Ok(FieldMap {
@@ -355,17 +496,40 @@ pub fn time_series(l: &Loaded, monitor: &str) -> Result<TimeSeries> {
         let mut series = vec![];
         for f in t["fields"].as_array().cloned().unwrap_or_default() {
             let data = f64s(&f["data"]);
-            let dims: Vec<usize> = f["dims"].as_array().map(|a| a.iter().map(|x| x.as_u64().unwrap_or(0) as usize).collect()).unwrap_or_default();
-            let per = dims.get(1..).map(|d| d.iter().product::<usize>()).unwrap_or(1).max(1);
+            let dims: Vec<usize> = f["dims"]
+                .as_array()
+                .map(|a| a.iter().map(|x| x.as_u64().unwrap_or(0) as usize).collect())
+                .unwrap_or_default();
+            let per = dims
+                .get(1..)
+                .map(|d| d.iter().product::<usize>())
+                .unwrap_or(1)
+                .max(1);
             // a probe: one sample per time; a box: its centre sample
             let mid = per / 2;
-            let vals: Vec<f64> = (0..times.len()).map(|i| data.get(i * per + mid).copied().unwrap_or(0.0)).collect();
-            series.push(Series { name: f["comp"].as_str().unwrap_or("").into(), values: vals });
+            let vals: Vec<f64> = (0..times.len())
+                .map(|i| data.get(i * per + mid).copied().unwrap_or(0.0))
+                .collect();
+            series.push(Series {
+                name: f["comp"].as_str().unwrap_or("").into(),
+                values: vals,
+            });
         }
-        return Ok(TimeSeries { monitor: monitor.into(), times, series });
+        return Ok(TimeSeries {
+            monitor: monitor.into(),
+            times,
+            series,
+        });
     }
     if let Some(e) = r["energy"].get(monitor) {
-        return Ok(TimeSeries { monitor: monitor.into(), times: f64s(&e["times"]), series: vec![Series { name: "energy (J)".into(), values: f64s(&e["energy"]) }] });
+        return Ok(TimeSeries {
+            monitor: monitor.into(),
+            times: f64s(&e["times"]),
+            series: vec![Series {
+                name: "energy (J)".into(),
+                values: f64s(&e["energy"]),
+            }],
+        });
     }
     bail!("monitor '{monitor}' has no time series in these results")
 }
@@ -377,7 +541,14 @@ pub fn energy_decay(l: &Loaded) -> TimeSeries {
     let e = f64s(&s["energy"]);
     let dt = s["dt"].as_f64().unwrap_or(0.0);
     let peak = e.iter().cloned().fold(0.0, f64::max).max(1e-300);
-    TimeSeries { monitor: "energy decay".into(), times: steps.iter().map(|n| n * dt).collect(), series: vec![Series { name: "energy / peak".into(), values: e.iter().map(|x| x / peak).collect() }] }
+    TimeSeries {
+        monitor: "energy decay".into(),
+        times: steps.iter().map(|n| n * dt).collect(),
+        series: vec![Series {
+            name: "energy / peak".into(),
+            values: e.iter().map(|x| x / peak).collect(),
+        }],
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -391,20 +562,33 @@ pub struct FarField {
 }
 
 pub fn far_field(l: &Loaded, monitor: &str, freq_index: usize) -> Result<FarField> {
-    let f = l.results["far_field"].get(monitor).with_context(|| format!("no far-field monitor '{monitor}'"))?;
+    let f = l.results["far_field"]
+        .get(monitor)
+        .with_context(|| format!("no far-field monitor '{monitor}'"))?;
     let freqs = f64s(&f["freqs"]);
     let theta = f64s(&f["theta"]);
     let phi = f64s(&f["phi"]);
     let all = f64s(&f["intensity"]);
     let fi = freq_index.min(freqs.len().saturating_sub(1));
     let n = theta.len() * phi.len();
-    Ok(FarField { monitor: monitor.into(), freq: freqs.get(fi).copied().unwrap_or(0.0), intensity: all.get(fi * n..(fi + 1) * n).map(|s| s.to_vec()).unwrap_or_default(), theta, phi })
+    Ok(FarField {
+        monitor: monitor.into(),
+        freq: freqs.get(fi).copied().unwrap_or(0.0),
+        intensity: all
+            .get(fi * n..(fi + 1) * n)
+            .map(|s| s.to_vec())
+            .unwrap_or_default(),
+        theta,
+        phi,
+    })
 }
 
 /// Compare the metrics of two runs.
 pub fn diff_metrics(a: &Value, b: &Value) -> Value {
     let mut out = vec![];
-    let (Some(a), Some(b)) = (a.as_object(), b.as_object()) else { return json!([]) };
+    let (Some(a), Some(b)) = (a.as_object(), b.as_object()) else {
+        return json!([]);
+    };
     let mut keys: Vec<&String> = a.keys().chain(b.keys()).collect();
     keys.sort();
     keys.dedup();

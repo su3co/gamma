@@ -118,37 +118,73 @@ impl ProjectState {
             return s;
         }
         let p = self.snapshot();
-        let path = p.manifest.layout.as_ref().map(|l| p.path(&l.stack)).unwrap_or_else(|| p.root.join("stack.toml"));
+        let path = p
+            .manifest
+            .layout
+            .as_ref()
+            .map(|l| p.path(&l.stack))
+            .unwrap_or_else(|| p.root.join("stack.toml"));
         let s = Stack::load(&path).ok().map(Arc::new);
         self.cache.lock().unwrap().stack = Some(s.clone());
         s
     }
 
     pub fn sim(&self, name: &str, preview: bool) -> Result<Arc<Simulation>> {
-        if let Some(s) = self.cache.lock().unwrap().sims.get(&(name.to_string(), preview)) {
+        if let Some(s) = self
+            .cache
+            .lock()
+            .unwrap()
+            .sims
+            .get(&(name.to_string(), preview))
+        {
             return Ok(s.clone());
         }
         let p = self.snapshot();
         let cfg = p.sim(name)?;
         let path = p.path(&cfg.spec);
         if !path.is_file() {
-            bail!("simulation {name}: {} does not exist yet{}", cfg.spec, if cfg.generator.is_some() { "; build it first" } else { "" });
+            bail!(
+                "simulation {name}: {} does not exist yet{}",
+                cfg.spec,
+                if cfg.generator.is_some() {
+                    "; build it first"
+                } else {
+                    ""
+                }
+            );
         }
         let mut sim = gamma_sim::setup::load(&path)?;
         if preview {
             let built = p.path(&preview_spec_rel(&cfg.spec));
-            let fresh = built.is_file() && std::fs::metadata(&built).and_then(|m| m.modified()).ok() >= std::fs::metadata(&path).and_then(|m| m.modified()).ok().map(|t| t - std::time::Duration::from_secs(600));
+            let fresh = built.is_file()
+                && std::fs::metadata(&built).and_then(|m| m.modified()).ok()
+                    >= std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .map(|t| t - std::time::Duration::from_secs(600));
             if fresh {
                 sim = gamma_sim::setup::load(&built)?;
             } else if has_mode_profiles(&sim) {
-                bail!("simulation {name} solves port modes on its grid, so its preview must be built by its script with a coarser mesh: add [simulation.preview] to gamma.toml and build (the script reads gamma_pic.mesh_scale())");
+                bail!(
+                    "simulation {name} solves port modes on its grid, so its preview must be built by its script with a coarser mesh: add [simulation.preview] to gamma.toml and build (the script reads gamma_pic.mesh_scale())"
+                );
             } else {
-                let pv = cfg.preview.clone().unwrap_or(gamma_core::project::PreviewCfg { mesh_scale: 2.0, run_time_scale: 1.0 });
+                let pv = cfg
+                    .preview
+                    .clone()
+                    .unwrap_or(gamma_core::project::PreviewCfg {
+                        mesh_scale: 2.0,
+                        run_time_scale: 1.0,
+                    });
                 sim = gamma_sim::setup::preview(&sim, pv.mesh_scale, pv.run_time_scale);
             }
         }
         let sim = Arc::new(sim);
-        self.cache.lock().unwrap().sims.insert((name.to_string(), preview), sim.clone());
+        self.cache
+            .lock()
+            .unwrap()
+            .sims
+            .insert((name.to_string(), preview), sim.clone());
         Ok(sim)
     }
 
@@ -157,20 +193,39 @@ impl ProjectState {
         self.run_generator_env(script, actor, what, &[]).await
     }
 
-    pub async fn run_generator_env(&self, script: &str, actor: &str, what: &str, env: &[(String, String)]) -> Result<Value> {
+    pub async fn run_generator_env(
+        &self,
+        script: &str,
+        actor: &str,
+        what: &str,
+        env: &[(String, String)],
+    ) -> Result<Value> {
         let p = self.snapshot();
         let py = p.python();
         let t0 = std::time::Instant::now();
-        self.log.push(actor, "build.started", json!({"target": what, "script": script}));
+        self.log.push(
+            actor,
+            "build.started",
+            json!({"target": what, "script": script}),
+        );
         let mut cmd = tokio::process::Command::new(&py);
-        cmd.arg(script).current_dir(&p.root).env("GAMMA_PROJECT", &p.root).env("PYTHONUNBUFFERED", "1").kill_on_drop(true);
+        cmd.arg(script)
+            .current_dir(&p.root)
+            .env("GAMMA_PROJECT", &p.root)
+            .env("PYTHONUNBUFFERED", "1")
+            .kill_on_drop(true);
         for (k, v) in env {
             cmd.env(k, v);
         }
         let out = tokio::time::timeout(std::time::Duration::from_secs(1800), cmd.output())
             .await
             .map_err(|_| anyhow::anyhow!("{script} did not finish within 30 minutes"))?
-            .with_context(|| format!("running {} {script} (set [python] interpreter in gamma.toml)", py.display()))?;
+            .with_context(|| {
+                format!(
+                    "running {} {script} (set [python] interpreter in gamma.toml)",
+                    py.display()
+                )
+            })?;
         let tail = |b: &[u8]| -> String {
             let s = String::from_utf8_lossy(b);
             let lines: Vec<&str> = s.lines().collect();
@@ -199,23 +254,41 @@ impl ProjectState {
         for s in &p.manifest.simulations {
             if target == "all" || target == format!("sim:{}", s.name) {
                 if let Some(g) = &s.generator {
-                    out.push(self.run_generator(g, actor, &format!("sim:{}", s.name)).await?);
+                    out.push(
+                        self.run_generator(g, actor, &format!("sim:{}", s.name))
+                            .await?,
+                    );
                     if let Some(pv) = &s.preview {
                         // the coarse variant, built by the script itself (mode profiles
                         // belong to the grid they were solved on)
                         let env = vec![
-                            ("GAMMA_PREVIEW_MESH_SCALE".to_string(), pv.mesh_scale.to_string()),
-                            ("GAMMA_PREVIEW_RUN_TIME_SCALE".to_string(), pv.run_time_scale.to_string()),
+                            (
+                                "GAMMA_PREVIEW_MESH_SCALE".to_string(),
+                                pv.mesh_scale.to_string(),
+                            ),
+                            (
+                                "GAMMA_PREVIEW_RUN_TIME_SCALE".to_string(),
+                                pv.run_time_scale.to_string(),
+                            ),
                             ("GAMMA_SPEC_OUT".to_string(), preview_spec_rel(&s.spec)),
                         ];
-                        out.push(self.run_generator_env(g, actor, &format!("sim:{} (preview)", s.name), &env).await?);
+                        out.push(
+                            self.run_generator_env(
+                                g,
+                                actor,
+                                &format!("sim:{} (preview)", s.name),
+                                &env,
+                            )
+                            .await?,
+                        );
                     }
                 }
             }
         }
         self.invalidate_sims();
         if target != "layout" {
-            self.log.push("hub", "sim.changed", json!({"target": target}));
+            self.log
+                .push("hub", "sim.changed", json!({"target": target}));
         }
         Ok(out)
     }
@@ -224,18 +297,29 @@ impl ProjectState {
         let p = self.snapshot();
         let mut out = vec![];
         let base = p.root.join("results");
-        let Ok(sims) = std::fs::read_dir(&base) else { return out };
+        let Ok(sims) = std::fs::read_dir(&base) else {
+            return out;
+        };
         for s in sims.flatten() {
             let sname = s.file_name().to_string_lossy().to_string();
             if sim.map(|x| x != sname).unwrap_or(false) {
                 continue;
             }
-            let Ok(runs) = std::fs::read_dir(s.path()) else { continue };
+            let Ok(runs) = std::fs::read_dir(s.path()) else {
+                continue;
+            };
             for r in runs.flatten() {
                 let rp = r.path();
-                let Ok(t) = std::fs::read_to_string(rp.join("run.json")) else { continue };
+                let Ok(t) = std::fs::read_to_string(rp.join("run.json")) else {
+                    continue;
+                };
                 let run: Value = serde_json::from_str(&t).unwrap_or(json!({}));
-                out.push(RunInfo { sim: sname.clone(), id: r.file_name().to_string_lossy().to_string(), has_results: rp.join("results.json").is_file(), run });
+                out.push(RunInfo {
+                    sim: sname.clone(),
+                    id: r.file_name().to_string_lossy().to_string(),
+                    has_results: rp.join("results.json").is_file(),
+                    run,
+                });
             }
         }
         out.sort_by(|a, b| b.id.cmp(&a.id));
@@ -268,10 +352,20 @@ impl ProjectState {
     }
 
     pub fn comments(&self) -> Vec<Value> {
-        gamma_core::fsutil::read_lines_repair(&self.comments_path()).unwrap_or_default().iter().filter_map(|l| serde_json::from_str(l).ok()).collect()
+        gamma_core::fsutil::read_lines_repair(&self.comments_path())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect()
     }
 
-    pub fn add_comment(&self, actor: &str, text: &str, object: Option<&str>, checkpoint: Option<u32>) -> Result<Value> {
+    pub fn add_comment(
+        &self,
+        actor: &str,
+        text: &str,
+        object: Option<&str>,
+        checkpoint: Option<u32>,
+    ) -> Result<Value> {
         let c = json!({"time": crate::events::now(), "actor": actor, "text": text, "object": object, "checkpoint": checkpoint, "id": format!("c{}", rand::random::<u32>())});
         gamma_core::fsutil::append_line(&self.comments_path(), &c.to_string())?;
         self.log.push(actor, "comment", c.clone());
@@ -282,7 +376,10 @@ impl ProjectState {
     pub fn safe_path(&self, rel: &str) -> Result<PathBuf> {
         let root = self.root();
         let p = Path::new(rel);
-        if p.is_absolute() || p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        if p.is_absolute()
+            || p.components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
             bail!("path must be relative to the project and stay inside it: {rel}");
         }
         Ok(root.join(p))
@@ -313,7 +410,11 @@ pub fn preview_spec_rel(spec: &str) -> String {
 pub fn has_mode_profiles(sim: &Simulation) -> bool {
     use gamma_sim::lightsim_core::monitors::Monitor;
     use gamma_sim::lightsim_core::sources::Source;
-    sim.sources.iter().any(|s| matches!(s, Source::Mode { .. })) || sim.monitors.iter().any(|m| matches!(m, Monitor::Mode { .. }))
+    sim.sources.iter().any(|s| matches!(s, Source::Mode { .. }))
+        || sim
+            .monitors
+            .iter()
+            .any(|m| matches!(m, Monitor::Mode { .. }))
 }
 
 /// Files of the project for the tree (skipping build outputs, caches and git).
@@ -323,18 +424,32 @@ pub fn file_tree(root: &Path) -> Vec<Value> {
         if depth > 6 || out.len() > 2000 {
             return;
         }
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         let mut entries: Vec<_> = rd.flatten().collect();
         entries.sort_by_key(|e| e.file_name());
         for e in entries {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') && name != ".gamma" || name == "__pycache__" || name == "node_modules" || name == "local" && dir.ends_with(".gamma") {
+            if name.starts_with('.') && name != ".gamma"
+                || name == "__pycache__"
+                || name == "node_modules"
+                || name == "local" && dir.ends_with(".gamma")
+            {
                 continue;
             }
             let p = e.path();
-            let rel = p.strip_prefix(base).unwrap_or(&p).to_string_lossy().to_string();
+            let rel = p
+                .strip_prefix(base)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .to_string();
             let is_dir = p.is_dir();
-            let size = if is_dir { 0 } else { e.metadata().map(|m| m.len()).unwrap_or(0) };
+            let size = if is_dir {
+                0
+            } else {
+                e.metadata().map(|m| m.len()).unwrap_or(0)
+            };
             out.push(json!({"path": rel, "dir": is_dir, "size": size}));
             if is_dir {
                 walk(base, &p, out, depth + 1);
@@ -349,7 +464,9 @@ pub fn file_tree(root: &Path) -> Vec<Value> {
 /// so checkpoints can be compared later.
 pub fn save_checkpoint_layout(ps: &ProjectState, n: u32) -> Result<()> {
     let p = ps.snapshot();
-    let Some(l) = &p.manifest.layout else { return Ok(()) };
+    let Some(l) = &p.manifest.layout else {
+        return Ok(());
+    };
     let dir = p.local_dir().join("checkpoints").join(n.to_string());
     std::fs::create_dir_all(&dir)?;
     let gds = p.path(&l.gds);
@@ -374,7 +491,16 @@ pub fn checkpoint_layout(ps: &ProjectState, n: u32) -> Result<Option<Layout>> {
     }
     let ports = dir.join("ports.json");
     let top = p.manifest.layout.as_ref().and_then(|l| l.top.clone());
-    Layout::read(&gds, top.as_deref(), if ports.is_file() { Some(ports.as_path()) } else { None }).map(Some)
+    Layout::read(
+        &gds,
+        top.as_deref(),
+        if ports.is_file() {
+            Some(ports.as_path())
+        } else {
+            None
+        },
+    )
+    .map(Some)
 }
 
 /// Create a new project folder: manifest, stack, folders, .gitignore, git.
@@ -384,9 +510,19 @@ pub fn init_project(root: &Path, name: Option<&str>) -> Result<()> {
     if mf.exists() {
         return Ok(());
     }
-    let name = name.map(|s| s.to_string()).unwrap_or_else(|| root.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "project".into()));
+    let name = name.map(|s| s.to_string()).unwrap_or_else(|| {
+        root.file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "project".into())
+    });
     let mut m = gamma_core::Manifest::new(&name);
-    m.layout = Some(gamma_core::project::LayoutCfg { gds: "build/layout.gds".into(), generator: None, ports: None, top: None, stack: "stack.toml".into() });
+    m.layout = Some(gamma_core::project::LayoutCfg {
+        gds: "build/layout.gds".into(),
+        generator: None,
+        ports: None,
+        top: None,
+        stack: "stack.toml".into(),
+    });
     gamma_core::fsutil::atomic_write(&mf, toml::to_string_pretty(&m)?.as_bytes())?;
     let st = root.join("stack.toml");
     if !st.exists() {
@@ -409,9 +545,16 @@ pub fn init_project(root: &Path, name: Option<&str>) -> Result<()> {
 pub fn diff_checkpoints(ps: &ProjectState, a: u32, b: Option<u32>) -> Result<Value> {
     let root = ps.root();
     let list = crate::git::list(&root)?;
-    let ca = list.iter().find(|c| c.n == a).with_context(|| format!("no checkpoint {a}"))?;
+    let ca = list
+        .iter()
+        .find(|c| c.n == a)
+        .with_context(|| format!("no checkpoint {a}"))?;
     let cb = match b {
-        Some(b) => Some(list.iter().find(|c| c.n == b).with_context(|| format!("no checkpoint {b}"))?),
+        Some(b) => Some(
+            list.iter()
+                .find(|c| c.n == b)
+                .with_context(|| format!("no checkpoint {b}"))?,
+        ),
         None => None,
     };
     let la = checkpoint_layout(ps, a)?;
@@ -430,15 +573,25 @@ pub fn diff_checkpoints(ps: &ProjectState, a: u32, b: Option<u32>) -> Result<Val
     // result diff: latest run metrics of each simulation at both checkpoints
     let metrics_at = |commit: Option<&str>| -> HashMap<String, Value> {
         let mut out = HashMap::new();
-        let Ok(rd) = std::fs::read_dir(root.join("results")) else { return out };
+        let Ok(rd) = std::fs::read_dir(root.join("results")) else {
+            return out;
+        };
         for s in rd.flatten() {
             let sim = s.file_name().to_string_lossy().to_string();
-            let mut runs: Vec<String> = std::fs::read_dir(s.path()).map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()).unwrap_or_default();
+            let mut runs: Vec<String> = std::fs::read_dir(s.path())
+                .map(|r| {
+                    r.flatten()
+                        .map(|e| e.file_name().to_string_lossy().to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
             runs.sort();
             for run in runs.iter().rev() {
                 let rel = format!("results/{sim}/{run}/run.json");
                 let text = match commit {
-                    Some(c) => crate::git::show(&root, c, &rel).ok().map(|b| String::from_utf8_lossy(&b).to_string()),
+                    Some(c) => crate::git::show(&root, c, &rel)
+                        .ok()
+                        .map(|b| String::from_utf8_lossy(&b).to_string()),
                     None => std::fs::read_to_string(root.join(&rel)).ok(),
                 };
                 if let Some(t) = text {
@@ -464,5 +617,7 @@ pub fn diff_checkpoints(ps: &ProjectState, a: u32, b: Option<u32>) -> Result<Val
         let y = mb.get(s).cloned().unwrap_or(json!({}));
         results.push(json!({"sim": s, "before": x["run"], "after": y["run"], "metrics": gamma_sim::results::diff_metrics(&x["metrics"], &y["metrics"])}));
     }
-    Ok(json!({"a": ca, "b": cb, "files": files, "layout": layout, "results": results, "layout_note": if la.is_none() { "the layout of the first checkpoint was not kept on this machine" } else { "" }}))
+    Ok(
+        json!({"a": ca, "b": cb, "files": files, "layout": layout, "results": results, "layout_note": if la.is_none() { "the layout of the first checkpoint was not kept on this machine" } else { "" }}),
+    )
 }

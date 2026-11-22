@@ -30,7 +30,14 @@ impl<E: Into<anyhow::Error>> From<E> for ApiError {
     fn from(e: E) -> Self {
         let e: anyhow::Error = e.into();
         let msg = format!("{e:#}");
-        let code = if msg.starts_with("no ") || msg.contains("not found") || msg.contains("does not exist") { StatusCode::NOT_FOUND } else { StatusCode::BAD_REQUEST };
+        let code = if msg.starts_with("no ")
+            || msg.contains("not found")
+            || msg.contains("does not exist")
+        {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::BAD_REQUEST
+        };
         ApiError(code, msg)
     }
 }
@@ -42,10 +49,15 @@ fn bad(msg: impl Into<String>) -> ApiError {
     ApiError(StatusCode::BAD_REQUEST, msg.into())
 }
 
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> R<T> {
+async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> anyhow::Result<T> + Send + 'static,
+) -> R<T> {
     match tokio::task::spawn_blocking(f).await {
         Ok(r) => r.map_err(ApiError::from),
-        Err(e) => Err(ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("internal error: {e}"))),
+        Err(e) => Err(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("internal error: {e}"),
+        )),
     }
 }
 
@@ -54,12 +66,23 @@ fn bin(data: Vec<u8>) -> Response {
 }
 
 fn png(data: Vec<u8>) -> Response {
-    ([(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "no-store")], data).into_response()
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        data,
+    )
+        .into_response()
 }
 
 async fn auth(State(hub): State<Hub>, req: Request, next: Next) -> Response {
     // DNS rebinding: only loopback host names
-    let host = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("");
+    let host = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
     let hostname = host.rsplit_once(':').map(|(h, _)| h).unwrap_or(host);
     if !matches!(hostname, "127.0.0.1" | "localhost" | "[::1]" | "") {
         return (StatusCode::FORBIDDEN, "forbidden host").into_response();
@@ -68,10 +91,23 @@ async fn auth(State(hub): State<Hub>, req: Request, next: Next) -> Response {
     if !path.starts_with("/api/") {
         return next.run(req).await;
     }
-    let ok_header = req.headers().get(header::AUTHORIZATION).and_then(|h| h.to_str().ok()).map(|s| s == format!("Bearer {}", hub.token)).unwrap_or(false);
-    let ok_query = req.uri().query().map(|q| q.split('&').any(|kv| kv == format!("token={}", hub.token))).unwrap_or(false);
+    let ok_header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s == format!("Bearer {}", hub.token))
+        .unwrap_or(false);
+    let ok_query = req
+        .uri()
+        .query()
+        .map(|q| q.split('&').any(|kv| kv == format!("token={}", hub.token)))
+        .unwrap_or(false);
     if !(ok_header || ok_query) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "missing or wrong token"}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "missing or wrong token"})),
+        )
+            .into_response();
     }
     next.run(req).await
 }
@@ -89,7 +125,10 @@ pub fn router(hub: Hub) -> Router {
         .route("/api/remotes/{name}", axum::routing::delete(remote_remove))
         .route("/api/remotes/{name}/test", post(remote_test))
         .route("/api/remotes/{name}/install", post(remote_install))
-        .route("/api/agents/providers", get(|| async { Json(crate::agent::providers()) }))
+        .route(
+            "/api/agents/providers",
+            get(|| async { Json(crate::agent::providers()) }),
+        )
         .route("/api/config", get(config_get).put(config_put))
         .route("/api/p/{id}", get(project_info))
         .route("/api/p/{id}/files", get(files))
@@ -112,8 +151,14 @@ pub fn router(hub: Hub) -> Router {
         .route("/api/p/{id}/runs/{sim}/{run}/{what}", get(run_view))
         .route("/api/p/{id}/check", get(check))
         .route("/api/p/{id}/render", get(render))
-        .route("/api/p/{id}/selection", get(selection_get).post(selection_set))
-        .route("/api/p/{id}/checkpoints", get(checkpoints).post(checkpoint_create))
+        .route(
+            "/api/p/{id}/selection",
+            get(selection_get).post(selection_set),
+        )
+        .route(
+            "/api/p/{id}/checkpoints",
+            get(checkpoints).post(checkpoint_create),
+        )
         .route("/api/p/{id}/checkpoints/diff", get(checkpoint_diff))
         .route("/api/p/{id}/comments", get(comments).post(comment_add))
         .route("/api/p/{id}/events", get(events))
@@ -126,16 +171,31 @@ pub fn router(hub: Hub) -> Router {
         .route("/api/p/{id}/circuits/{name}", get(circuit));
     let mut app = api.with_state(hub.clone());
     if let Some(dir) = &hub.ui_dir {
-        app = app.fallback_service(tower_http::services::ServeDir::new(dir).append_index_html_on_directories(true));
+        app = app.fallback_service(
+            tower_http::services::ServeDir::new(dir).append_index_html_on_directories(true),
+        );
     } else {
-        app = app.fallback(|| async { (StatusCode::NOT_FOUND, "gamma hub: no interface folder configured (API under /api)") });
+        app = app.fallback(|| async {
+            (
+                StatusCode::NOT_FOUND,
+                "gamma hub: no interface folder configured (API under /api)",
+            )
+        });
     }
     app.layer(middleware::from_fn_with_state(hub.clone(), auth))
-        .layer(tower_http::cors::CorsLayer::new().allow_origin(tower_http::cors::Any).allow_headers(tower_http::cors::Any).allow_methods(tower_http::cors::Any))
+        .layer(
+            tower_http::cors::CorsLayer::new()
+                .allow_origin(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any)
+                .allow_methods(tower_http::cors::Any),
+        )
 }
 
 fn actor(h: &HeaderMap) -> String {
-    h.get("x-gamma-actor").and_then(|v| v.to_str().ok()).unwrap_or("person").to_string()
+    h.get("x-gamma-actor")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("person")
+        .to_string()
 }
 
 fn proj(hub: &Hub, id: &str) -> R<Arc<ProjectState>> {
@@ -183,7 +243,10 @@ async fn jobs(State(hub): State<Hub>) -> Json<Value> {
 }
 
 async fn job(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {
-    Ok(Json(json!(hub.jobs.get(&id).ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no such job".into()))?)))
+    Ok(Json(json!(hub.jobs.get(&id).ok_or_else(|| ApiError(
+        StatusCode::NOT_FOUND,
+        "no such job".into()
+    ))?)))
 }
 
 async fn job_cancel(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {
@@ -198,7 +261,10 @@ async fn remotes(State(hub): State<Hub>) -> Json<Value> {
     Json(json!(hub.remotes(None)))
 }
 
-async fn remote_add(State(hub): State<Hub>, Json(r): Json<gamma_core::project::RemoteCfg>) -> R<Json<Value>> {
+async fn remote_add(
+    State(hub): State<Hub>,
+    Json(r): Json<gamma_core::project::RemoteCfg>,
+) -> R<Json<Value>> {
     if r.name.is_empty() || r.ssh.is_empty() {
         return Err(bad("a remote needs a name and an ssh target"));
     }
@@ -226,16 +292,25 @@ struct InstallReq {
     binary: String,
 }
 
-async fn remote_install(State(hub): State<Hub>, Path(name): Path<String>, Json(b): Json<InstallReq>) -> R<Json<Value>> {
+async fn remote_install(
+    State(hub): State<Hub>,
+    Path(name): Path<String>,
+    Json(b): Json<InstallReq>,
+) -> R<Json<Value>> {
     let r = hub.remote(&name, None)?;
-    Ok(Json(crate::remote::install(&r, std::path::Path::new(&b.binary)).await?))
+    Ok(Json(
+        crate::remote::install(&r, std::path::Path::new(&b.binary)).await?,
+    ))
 }
 
 async fn config_get(State(hub): State<Hub>) -> Json<Value> {
     Json(json!(*hub.config.lock().unwrap()))
 }
 
-async fn config_put(State(hub): State<Hub>, Json(c): Json<crate::config::UserConfig>) -> R<Json<Value>> {
+async fn config_put(
+    State(hub): State<Hub>,
+    Json(c): Json<crate::config::UserConfig>,
+) -> R<Json<Value>> {
     c.save()?;
     *hub.config.lock().unwrap() = c.clone();
     Ok(Json(json!(c)))
@@ -258,19 +333,31 @@ async fn files(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>>
 async fn file_get(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Response> {
     let ps = proj(&hub, &id)?;
     let p = ps.safe_path(q.get("path").ok_or_else(|| bad("path required"))?)?;
-    let data = tokio::fs::read(&p).await.map_err(|e| ApiError(StatusCode::NOT_FOUND, format!("{}: {e}", p.display())))?;
+    let data = tokio::fs::read(&p)
+        .await
+        .map_err(|e| ApiError(StatusCode::NOT_FOUND, format!("{}: {e}", p.display())))?;
     if data.len() > 8 << 20 {
         return Err(bad("file larger than 8 MB"));
     }
     Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], data).into_response())
 }
 
-async fn file_put(State(hub): State<Hub>, Path(id): Path<String>, headers: HeaderMap, Query(q): Q, body: Bytes) -> R<Json<Value>> {
+async fn file_put(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Query(q): Q,
+    body: Bytes,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let rel = q.get("path").ok_or_else(|| bad("path required"))?.clone();
     let p = ps.safe_path(&rel)?;
     gamma_core::fsutil::atomic_write(&p, &body)?;
-    ps.log.push(&actor(&headers), "file.written", json!({"path": rel, "bytes": body.len()}));
+    ps.log.push(
+        &actor(&headers),
+        "file.written",
+        json!({"path": rel, "bytes": body.len()}),
+    );
     Ok(Json(json!({"written": rel})))
 }
 
@@ -283,7 +370,12 @@ fn all() -> String {
     "all".into()
 }
 
-async fn build(State(hub): State<Hub>, Path(id): Path<String>, headers: HeaderMap, Json(b): Json<BuildReq>) -> R<Json<Value>> {
+async fn build(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(b): Json<BuildReq>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let out = ps.build(&b.target, &actor(&headers)).await?;
     Ok(Json(json!(out)))
@@ -294,16 +386,26 @@ struct OnReq {
     on: bool,
 }
 
-async fn autobuild(State(hub): State<Hub>, Path(id): Path<String>, Json(b): Json<OnReq>) -> R<Json<Value>> {
+async fn autobuild(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Json(b): Json<OnReq>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    ps.autobuild.store(b.on, std::sync::atomic::Ordering::Relaxed);
+    ps.autobuild
+        .store(b.on, std::sync::atomic::Ordering::Relaxed);
     Ok(Json(json!({"autobuild": b.on})))
 }
 
 fn layer_key(q: &HashMap<String, String>) -> R<(u16, u16)> {
-    let s = q.get("layer").ok_or_else(|| bad("layer required (e.g. 1/0)"))?;
+    let s = q
+        .get("layer")
+        .ok_or_else(|| bad("layer required (e.g. 1/0)"))?;
     let (a, b) = s.split_once('/').unwrap_or((s, "0"));
-    Ok((a.parse().map_err(|_| bad("bad layer"))?, b.parse().map_err(|_| bad("bad layer"))?))
+    Ok((
+        a.parse().map_err(|_| bad("bad layer"))?,
+        b.parse().map_err(|_| bad("bad layer"))?,
+    ))
 }
 
 async fn layout(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {
@@ -322,14 +424,28 @@ async fn layout(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>
 async fn layout_mesh(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Response> {
     let ps = proj(&hub, &id)?;
     let key = layer_key(&q)?;
-    let data = blocking(move || ps.layout()?.and_then(|l| l.layer_mesh_bytes(key)).ok_or_else(|| anyhow::anyhow!("no layer {}/{}", key.0, key.1))).await?;
+    let data = blocking(move || {
+        ps.layout()?
+            .and_then(|l| l.layer_mesh_bytes(key))
+            .ok_or_else(|| anyhow::anyhow!("no layer {}/{}", key.0, key.1))
+    })
+    .await?;
     Ok(bin(data))
 }
 
-async fn layout_outline(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Response> {
+async fn layout_outline(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Query(q): Q,
+) -> R<Response> {
     let ps = proj(&hub, &id)?;
     let key = layer_key(&q)?;
-    let data = blocking(move || ps.layout()?.and_then(|l| l.layer_outline_bytes(key)).ok_or_else(|| anyhow::anyhow!("no layer {}/{}", key.0, key.1))).await?;
+    let data = blocking(move || {
+        ps.layout()?
+            .and_then(|l| l.layer_outline_bytes(key))
+            .ok_or_else(|| anyhow::anyhow!("no layer {}/{}", key.0, key.1))
+    })
+    .await?;
     Ok(bin(data))
 }
 
@@ -338,8 +454,12 @@ async fn layout_mesh3d(State(hub): State<Hub>, Path(id): Path<String>, Query(q):
     let key = layer_key(&q)?;
     let data = blocking(move || {
         let l = ps.layout()?.ok_or_else(|| anyhow::anyhow!("no layout"))?;
-        let stack = ps.stack().ok_or_else(|| anyhow::anyhow!("no layer stack"))?;
-        let sl = stack.layer_for(key.0, key.1).ok_or_else(|| anyhow::anyhow!("layer {}/{} is not in the stack", key.0, key.1))?;
+        let stack = ps
+            .stack()
+            .ok_or_else(|| anyhow::anyhow!("no layer stack"))?;
+        let sl = stack
+            .layer_for(key.0, key.1)
+            .ok_or_else(|| anyhow::anyhow!("layer {}/{} is not in the stack", key.0, key.1))?;
         let ld = l.layer(key).ok_or_else(|| anyhow::anyhow!("no layer"))?;
         let mut m = gamma_core::geom::Mesh::default();
         for p in &ld.polygons {
@@ -363,10 +483,20 @@ async fn layout_mesh3d(State(hub): State<Hub>, Path(id): Path<String>, Query(q):
     Ok(bin(data))
 }
 
-async fn layout_pick(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Json<Value>> {
+async fn layout_pick(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Query(q): Q,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    let x: f64 = q.get("x").and_then(|v| v.parse().ok()).ok_or_else(|| bad("x required"))?;
-    let y: f64 = q.get("y").and_then(|v| v.parse().ok()).ok_or_else(|| bad("y required"))?;
+    let x: f64 = q
+        .get("x")
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| bad("x required"))?;
+    let y: f64 = q
+        .get("y")
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| bad("y required"))?;
     let tol: f64 = q.get("tol").and_then(|v| v.parse().ok()).unwrap_or(0.05);
     blocking(move || {
         let l = ps.layout()?.ok_or_else(|| anyhow::anyhow!("no layout"))?;
@@ -377,25 +507,44 @@ async fn layout_pick(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q
 
 async fn layout_gap(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    let a = q.get("a").and_then(|s| ObjRef::parse(s)).ok_or_else(|| bad("a=poly:L/D#i required"))?;
-    let b = q.get("b").and_then(|s| ObjRef::parse(s)).ok_or_else(|| bad("b=poly:L/D#i required"))?;
+    let a = q
+        .get("a")
+        .and_then(|s| ObjRef::parse(s))
+        .ok_or_else(|| bad("a=poly:L/D#i required"))?;
+    let b = q
+        .get("b")
+        .and_then(|s| ObjRef::parse(s))
+        .ok_or_else(|| bad("b=poly:L/D#i required"))?;
     blocking(move || {
         let l = ps.layout()?.ok_or_else(|| anyhow::anyhow!("no layout"))?;
         let k = |r: &ObjRef| match r {
-            ObjRef::Poly { layer, datatype, index } => Ok(((*layer, *datatype), *index)),
+            ObjRef::Poly {
+                layer,
+                datatype,
+                index,
+            } => Ok(((*layer, *datatype), *index)),
             _ => Err(anyhow::anyhow!("gap needs two polygon references")),
         };
-        let (d, p, q) = l.gap(k(&a)?, k(&b)?).ok_or_else(|| anyhow::anyhow!("no such polygon"))?;
+        let (d, p, q) = l
+            .gap(k(&a)?, k(&b)?)
+            .ok_or_else(|| anyhow::anyhow!("no such polygon"))?;
         Ok(Json(json!({"distance_um": d, "from": p, "to": q})))
     })
     .await
 }
 
-async fn layout_query(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Json<Value>> {
+async fn layout_query(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Query(q): Q,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let key = layer_key(&q)?;
     let f = |k: &str| q.get(k).and_then(|v| v.parse::<f64>().ok());
-    let b = gamma_core::geom::BBox { min: [f("x0").unwrap_or(f64::MIN), f("y0").unwrap_or(f64::MIN)], max: [f("x1").unwrap_or(f64::MAX), f("y1").unwrap_or(f64::MAX)] };
+    let b = gamma_core::geom::BBox {
+        min: [f("x0").unwrap_or(f64::MIN), f("y0").unwrap_or(f64::MIN)],
+        max: [f("x1").unwrap_or(f64::MAX), f("y1").unwrap_or(f64::MAX)],
+    };
     let limit: usize = q.get("limit").and_then(|v| v.parse().ok()).unwrap_or(200);
     blocking(move || {
         let l = ps.layout()?.ok_or_else(|| anyhow::anyhow!("no layout"))?;
@@ -416,10 +565,20 @@ async fn stack_get(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Val
     Ok(Json(json!(ps.stack().as_deref())))
 }
 
-async fn stack_put(State(hub): State<Hub>, Path(id): Path<String>, headers: HeaderMap, Json(s): Json<gamma_core::Stack>) -> R<Json<Value>> {
+async fn stack_put(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(s): Json<gamma_core::Stack>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let p = ps.snapshot();
-    let path = p.manifest.layout.as_ref().map(|l| p.path(&l.stack)).unwrap_or_else(|| p.root.join("stack.toml"));
+    let path = p
+        .manifest
+        .layout
+        .as_ref()
+        .map(|l| p.path(&l.stack))
+        .unwrap_or_else(|| p.root.join("stack.toml"));
     gamma_core::fsutil::atomic_write(&path, s.to_toml().as_bytes())?;
     ps.invalidate_stack();
     ps.log.push(&actor(&headers), "stack.changed", json!({}));
@@ -439,14 +598,24 @@ async fn sims(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> 
 }
 
 fn preview(q: &HashMap<String, String>) -> bool {
-    q.get("preview").map(|v| v == "1" || v == "true").unwrap_or(false)
+    q.get("preview")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
 }
 
-async fn sim_setup(State(hub): State<Hub>, Path((id, name)): Path<(String, String)>, Query(q): Q) -> R<Json<Value>> {
+async fn sim_setup(
+    State(hub): State<Hub>,
+    Path((id, name)): Path<(String, String)>,
+    Query(q): Q,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let pv = preview(&q);
     let devices = hub.devices();
-    let mut remotes: Vec<Value> = hub.remotes(Some(&ps)).iter().map(|r| json!({"name": r.name, "ssh": r.ssh})).collect();
+    let mut remotes: Vec<Value> = hub
+        .remotes(Some(&ps))
+        .iter()
+        .map(|r| json!({"name": r.name, "ssh": r.ssh}))
+        .collect();
     let h2 = hub.clone();
     let mut s = blocking(move || {
         let sim = ps.sim(&name, pv)?;
@@ -457,7 +626,9 @@ async fn sim_setup(State(hub): State<Hub>, Path((id, name)): Path<(String, Strin
         let steps = v["grid"]["steps"].as_f64().unwrap_or(0.0);
         if let Some(est) = v["estimates"].as_array_mut() {
             for (k, t) in tp.iter().filter(|(k, _)| k.starts_with("remote:")) {
-                est.push(json!({"device": k, "name": k, "seconds": cells * steps / t, "fits": null}));
+                est.push(
+                    json!({"device": k, "name": k, "seconds": cells * steps / t, "fits": null}),
+                );
             }
         }
         Ok(v)
@@ -467,7 +638,11 @@ async fn sim_setup(State(hub): State<Hub>, Path((id, name)): Path<(String, Strin
     Ok(Json(s))
 }
 
-async fn sim_slice(State(hub): State<Hub>, Path((id, name)): Path<(String, String)>, Query(q): Q) -> R<Json<Value>> {
+async fn sim_slice(
+    State(hub): State<Hub>,
+    Path((id, name)): Path<(String, String)>,
+    Query(q): Q,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let pv = preview(&q);
     let axis: usize = q.get("axis").and_then(|v| v.parse().ok()).unwrap_or(2);
@@ -477,7 +652,11 @@ async fn sim_slice(State(hub): State<Hub>, Path((id, name)): Path<(String, Strin
         let sim = ps.sim(&name, pv)?;
         let c = coord.unwrap_or_else(|| {
             let d = gamma_sim::runner::SliceRequest::default_for(&sim);
-            if d.axis == axis { d.coord } else { 0.5 * (sim.region.min[axis] + sim.region.max[axis]) }
+            if d.axis == axis {
+                d.coord
+            } else {
+                0.5 * (sim.region.min[axis] + sim.region.max[axis])
+            }
         });
         let s = gamma_sim::setup::eps_slice(&sim, axis.min(2), c, max)?;
         let mut v = serde_json::to_value(&s)?;
@@ -510,10 +689,18 @@ struct RunReq {
     slice: Option<String>,
 }
 
-async fn sim_run(State(hub): State<Hub>, Path((id, name)): Path<(String, String)>, headers: HeaderMap, Json(r): Json<RunReq>) -> R<Json<Value>> {
+async fn sim_run(
+    State(hub): State<Hub>,
+    Path((id, name)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(r): Json<RunReq>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let cfg = ps.snapshot().sim(&name)?.clone();
-    let mut device = r.device.or(cfg.device.clone()).unwrap_or_else(|| "cpu".into());
+    let mut device = r
+        .device
+        .or(cfg.device.clone())
+        .unwrap_or_else(|| "cpu".into());
     let mut host = r.host.clone();
     // `remote:<host>/<device>` in the manifest or request
     if let Some(rest) = device.strip_prefix("remote:") {
@@ -528,7 +715,18 @@ async fn sim_run(State(hub): State<Hub>, Path((id, name)): Path<(String, String)
             None
         }
     };
-    let job = hub.jobs.submit(ps.clone(), RunRequest { sim: name, device, host, preview: r.preview, actor: actor(&headers), slice: r.slice }, hub.worker.clone())?;
+    let job = hub.jobs.submit(
+        ps.clone(),
+        RunRequest {
+            sim: name,
+            device,
+            host,
+            preview: r.preview,
+            actor: actor(&headers),
+            slice: r.slice,
+        },
+        hub.worker.clone(),
+    )?;
     // record measured throughput when it finishes
     let h2 = hub.clone();
     let jid = job.id.clone();
@@ -542,7 +740,12 @@ async fn sim_run(State(hub): State<Hub>, Path((id, name)): Path<(String, String)
                         if let Some(r) = p["mcells_per_s"].as_f64() {
                             let key = match &j.host {
                                 Some(h) => format!("remote:{h}/{}", j.device),
-                                None => h2.devices.iter().find(|d| d.id == j.device).map(|d| d.name.clone()).unwrap_or(j.device.clone()),
+                                None => h2
+                                    .devices
+                                    .iter()
+                                    .find(|d| d.id == j.device)
+                                    .map(|d| d.name.clone())
+                                    .unwrap_or(j.device.clone()),
                             };
                             h2.record_throughput(&key, r * 1e6);
                         }
@@ -560,24 +763,39 @@ async fn sim_run(State(hub): State<Hub>, Path((id, name)): Path<(String, String)
 async fn runs(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let sim = q.get("sim").cloned();
-    Ok(Json(json!(blocking(move || Ok(ps.runs(sim.as_deref()))).await?)))
+    Ok(Json(json!(
+        blocking(move || Ok(ps.runs(sim.as_deref()))).await?
+    )))
 }
 
-async fn run_view(State(hub): State<Hub>, Path((id, sim, run, what)): Path<(String, String, String, String)>, Query(q): Q) -> R<Json<Value>> {
+async fn run_view(
+    State(hub): State<Hub>,
+    Path((id, sim, run, what)): Path<(String, String, String, String)>,
+    Query(q): Q,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     blocking(move || {
         use gamma_sim::results as r;
         let spec = ps.run_spec(&sim, &run)?;
         let path = ps.run_dir(&sim, &run)?.join("results.json");
         let l = r::Loaded::read(&path, &spec)?;
-        let mon = || q.get("monitor").cloned().ok_or_else(|| anyhow::anyhow!("monitor required"));
+        let mon = || {
+            q.get("monitor")
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("monitor required"))
+        };
         let fi: usize = q.get("f").and_then(|v| v.parse().ok()).unwrap_or(0);
         Ok(Json(match what.as_str() {
             "overview" => json!(r::overview(&l)?),
             "spectrum" => json!(r::spectrum(&l, &mon()?)?),
             "sparams" => json!(r::sparams(&l)?),
             "field" => {
-                let f = r::field_map(&l, &mon()?, q.get("q").map(|s| s.as_str()).unwrap_or("|E|2"), fi)?;
+                let f = r::field_map(
+                    &l,
+                    &mon()?,
+                    q.get("q").map(|s| s.as_str()).unwrap_or("|E|2"),
+                    fi,
+                )?;
                 let mut v = serde_json::to_value(&f)?;
                 use base64::Engine;
                 let mut b = Vec::with_capacity(f.data.len() * 4);
@@ -608,11 +826,23 @@ async fn check(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>>
         }
         for s in &p.manifest.simulations {
             if let Ok(sim) = ps.sim(&s.name, false) {
-                f.extend(gamma_sim::checks::check(&s.name, &sim, layout.as_deref(), stack.as_deref()));
+                f.extend(gamma_sim::checks::check(
+                    &s.name,
+                    &sim,
+                    layout.as_deref(),
+                    stack.as_deref(),
+                ));
             }
         }
-        let errors = f.iter().filter(|x| x.severity == gamma_core::checks::Severity::Error).count();
-        ps.log.push("hub", "check.done", json!({"findings": f.len(), "errors": errors}));
+        let errors = f
+            .iter()
+            .filter(|x| x.severity == gamma_core::checks::Severity::Error)
+            .count();
+        ps.log.push(
+            "hub",
+            "check.done",
+            json!({"findings": f.len(), "errors": errors}),
+        );
         Ok(Json(json!({"findings": f, "errors": errors})))
     })
     .await
@@ -628,10 +858,17 @@ async fn render(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> 
 
 async fn selection_get(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    Ok(Json(ps.selection.lock().unwrap().clone().unwrap_or(Value::Null)))
+    Ok(Json(
+        ps.selection.lock().unwrap().clone().unwrap_or(Value::Null),
+    ))
 }
 
-async fn selection_set(State(hub): State<Hub>, Path(id): Path<String>, headers: HeaderMap, Json(v): Json<Value>) -> R<Json<Value>> {
+async fn selection_set(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(v): Json<Value>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     *ps.selection.lock().unwrap() = if v.is_null() { None } else { Some(v.clone()) };
     ps.log.push(&actor(&headers), "selection", v.clone());
@@ -651,7 +888,12 @@ struct CkReq {
     message: Option<String>,
 }
 
-async fn checkpoint_create(State(hub): State<Hub>, Path(id): Path<String>, headers: HeaderMap, Json(c): Json<CkReq>) -> R<Json<Value>> {
+async fn checkpoint_create(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(c): Json<CkReq>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let a = actor(&headers);
     let root = ps.root();
@@ -665,11 +907,20 @@ async fn checkpoint_create(State(hub): State<Hub>, Path(id): Path<String>, heade
     Ok(Json(json!(ck)))
 }
 
-async fn checkpoint_diff(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Json<Value>> {
+async fn checkpoint_diff(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Query(q): Q,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    let a: u32 = q.get("a").and_then(|v| v.parse().ok()).ok_or_else(|| bad("a=<checkpoint number> required"))?;
+    let a: u32 = q
+        .get("a")
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| bad("a=<checkpoint number> required"))?;
     let b: Option<u32> = q.get("b").and_then(|v| v.parse().ok());
-    blocking(move || crate::projects::diff_checkpoints(&ps, a, b)).await.map(Json)
+    blocking(move || crate::projects::diff_checkpoints(&ps, a, b))
+        .await
+        .map(Json)
 }
 
 async fn comments(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {
@@ -684,16 +935,30 @@ struct CommentReq {
     checkpoint: Option<u32>,
 }
 
-async fn comment_add(State(hub): State<Hub>, Path(id): Path<String>, headers: HeaderMap, Json(c): Json<CommentReq>) -> R<Json<Value>> {
+async fn comment_add(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(c): Json<CommentReq>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    Ok(Json(ps.add_comment(&actor(&headers), &c.text, c.object.as_deref(), c.checkpoint)?))
+    Ok(Json(ps.add_comment(
+        &actor(&headers),
+        &c.text,
+        c.object.as_deref(),
+        c.checkpoint,
+    )?))
 }
 
 async fn events(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let after: u64 = q.get("after").and_then(|v| v.parse().ok()).unwrap_or(0);
-    let kinds: Option<Vec<String>> = q.get("kinds").map(|k| k.split(',').map(|s| s.to_string()).collect());
-    let kr: Option<Vec<&str>> = kinds.as_ref().map(|v| v.iter().map(|s| s.as_str()).collect());
+    let kinds: Option<Vec<String>> = q
+        .get("kinds")
+        .map(|k| k.split(',').map(|s| s.to_string()).collect());
+    let kr: Option<Vec<&str>> = kinds
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect());
     let limit: usize = q.get("limit").and_then(|v| v.parse().ok()).unwrap_or(500);
     let mut ev = ps.log.since(after, kr.as_deref());
     if ev.len() > limit {
@@ -702,19 +967,37 @@ async fn events(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q) -> 
     Ok(Json(json!(ev)))
 }
 
-async fn ws(State(hub): State<Hub>, Path(id): Path<String>, Query(q): Q, upgrade: WebSocketUpgrade) -> R<Response> {
+async fn ws(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Query(q): Q,
+    upgrade: WebSocketUpgrade,
+) -> R<Response> {
     let ps = proj(&hub, &id)?;
-    let after: u64 = q.get("after").and_then(|v| v.parse().ok()).unwrap_or(u64::MAX);
+    let after: u64 = q
+        .get("after")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(u64::MAX);
     Ok(upgrade.on_upgrade(move |sock| ws_loop(sock, ps, after)))
 }
 
 async fn ws_loop(mut sock: WebSocket, ps: Arc<ProjectState>, after: u64) {
     let mut rx = ps.log.subscribe();
-    let backlog = if after == u64::MAX { vec![] } else { ps.log.since(after, None) };
+    let backlog = if after == u64::MAX {
+        vec![]
+    } else {
+        ps.log.since(after, None)
+    };
     let mut last = after.min(ps.log.last_seq());
     for e in backlog {
         last = e.seq;
-        if sock.send(Message::Text(serde_json::to_string(&e).unwrap_or_default().into())).await.is_err() {
+        if sock
+            .send(Message::Text(
+                serde_json::to_string(&e).unwrap_or_default().into(),
+            ))
+            .await
+            .is_err()
+        {
             return;
         }
     }
@@ -748,7 +1031,9 @@ fn _ev(_: Event) {}
 
 async fn agent_status(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    Ok(Json(json!({"session": hub.agents.status(&ps), "providers": crate::agent::providers()})))
+    Ok(Json(
+        json!({"session": hub.agents.status(&ps), "providers": crate::agent::providers()}),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -756,12 +1041,23 @@ struct AgentStart {
     provider: Option<String>,
 }
 
-async fn agent_start(State(hub): State<Hub>, Path(id): Path<String>, Json(a): Json<AgentStart>) -> R<Json<Value>> {
+async fn agent_start(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Json(a): Json<AgentStart>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let cfg = hub.config.lock().unwrap().agent.clone();
-    let provider = a.provider.or(cfg.provider).unwrap_or_else(|| "claude".into());
+    let provider = a
+        .provider
+        .or(cfg.provider)
+        .unwrap_or_else(|| "claude".into());
     hub.agents.stop(&ps).await?;
-    Ok(Json(hub.agents.start(ps, &provider, &hub.worker, &cfg.args).await?))
+    Ok(Json(
+        hub.agents
+            .start(ps, &provider, &hub.worker, &cfg.args)
+            .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -769,11 +1065,22 @@ struct AgentSend {
     text: String,
 }
 
-async fn agent_send(State(hub): State<Hub>, Path(id): Path<String>, Json(a): Json<AgentSend>) -> R<Json<Value>> {
+async fn agent_send(
+    State(hub): State<Hub>,
+    Path(id): Path<String>,
+    Json(a): Json<AgentSend>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     if hub.agents.status(&ps).is_null() {
         let cfg = hub.config.lock().unwrap().agent.clone();
-        hub.agents.start(ps.clone(), cfg.provider.as_deref().unwrap_or("claude"), &hub.worker, &cfg.args).await?;
+        hub.agents
+            .start(
+                ps.clone(),
+                cfg.provider.as_deref().unwrap_or("claude"),
+                &hub.worker,
+                &cfg.args,
+            )
+            .await?;
     }
     hub.agents.send(ps, &a.text, &hub.worker).await?;
     Ok(Json(json!({"sent": true})))
@@ -790,12 +1097,22 @@ async fn circuits(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Valu
     let p = ps.snapshot();
     let engine = gamma_quantum::ExternalEngine::default();
     use gamma_quantum::Engine;
-    Ok(Json(json!({"circuits": p.manifest.circuits, "engine": engine.name(), "engine_available": engine.available()})))
+    Ok(Json(
+        json!({"circuits": p.manifest.circuits, "engine": engine.name(), "engine_available": engine.available()}),
+    ))
 }
 
-async fn circuit(State(hub): State<Hub>, Path((id, name)): Path<(String, String)>) -> R<Json<Value>> {
+async fn circuit(
+    State(hub): State<Hub>,
+    Path((id, name)): Path<(String, String)>,
+) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let p = ps.snapshot();
-    let c = p.manifest.circuits.iter().find(|c| c.name == name).ok_or_else(|| ApiError(StatusCode::NOT_FOUND, format!("no circuit {name}")))?;
+    let c = p
+        .manifest
+        .circuits
+        .iter()
+        .find(|c| c.name == name)
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, format!("no circuit {name}")))?;
     Ok(Json(json!(gamma_quantum::read_circuit(&p.path(&c.file))?)))
 }

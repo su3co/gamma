@@ -41,7 +41,7 @@ export class Plot {
     let ylo = Infinity, yhi = -Infinity;
     for (const ser of s.series) for (let i = 0; i < ser.y.length; i++) { const v = ser.y[i]; if (isFinite(v) && (!s.logY || v > 0)) { ylo = Math.min(ylo, ty(v)); yhi = Math.max(yhi, ty(v)); } }
     if (!isFinite(ylo)) { ylo = 0; yhi = 1; }
-    if (yhi - ylo < 1e-12) { yhi += 0.5; ylo -= 0.5; }
+    if (yhi - ylo <= 1e-9 * Math.max(Math.abs(yhi), Math.abs(ylo)) || yhi === ylo) { const d = Math.abs(yhi) * 0.1 || 0.5; yhi += d; ylo -= d; }
     const pad = 0.06 * (yhi - ylo); ylo -= pad; yhi += pad;
     let xlo = Infinity, xhi = -Infinity;
     for (let i = 0; i < s.x.length; i++) { xlo = Math.min(xlo, s.x[i]); xhi = Math.max(xhi, s.x[i]); }
@@ -116,10 +116,11 @@ export class MapView {
   highlight: string | null = null;
   /** Pixels on the right covered by a panel; fit() centres in the rest. */
   insetRight = 0;
+  private pendingFit = 0;
   private drag: { x: number; y: number; cx: number; cy: number } | null = null;
   constructor(public canvas: HTMLCanvasElement) {
     const c = canvas;
-    new ResizeObserver(() => this.draw()).observe(c);
+    new ResizeObserver(() => { if (this.pendingFit && c.getBoundingClientRect().width > 0) this.fit(this.pendingFit); else this.draw(); }).observe(c);
     c.addEventListener("wheel", (e) => {
       e.preventDefault();
       const [wx, wy] = this.toWorld(e.offsetX, e.offsetY);
@@ -159,6 +160,9 @@ export class MapView {
   }
   fit(margin = 60) {
     const r = this.canvas.getBoundingClientRect();
+    // not laid out yet (hidden tab, first frame): fit when it gets a size
+    if (r.width < 10 || r.height < 10) { this.pendingFit = margin; return; }
+    this.pendingFit = 0;
     const [x0, y0, x1, y1] = this.extent;
     const avail = Math.max(r.width - this.insetRight, r.width * 0.4);
     this.view.s = Math.min((avail - 2 * margin) / Math.max(x1 - x0, 1e-12), (r.height - 2 * margin) / Math.max(y1 - y0, 1e-12));
@@ -199,7 +203,10 @@ export class MapView {
       const sel = o.ref && o.ref === this.highlight;
       g.strokeStyle = sel ? css("--select") : o.color; g.lineWidth = sel ? 2.5 : 1.4;
       g.setLineDash(o.dashed ? [5, 4] : []);
-      g.strokeRect(a, b, Math.max(cc - a, 1), Math.max(d - b, 1));
+      if (cc - a < 2 && d - b < 2) {
+        // a point (a dipole, a probe): a small cross
+        g.beginPath(); g.moveTo(a - 6, b); g.lineTo(a + 6, b); g.moveTo(a, b - 6); g.lineTo(a, b + 6); g.stroke();
+      } else g.strokeRect(a, b, Math.max(cc - a, 1), Math.max(d - b, 1));
       g.setLineDash([]);
       g.fillStyle = sel ? css("--select") : o.color;
       if (o.label) g.fillText(o.label, a + 3, b - 4);

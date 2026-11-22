@@ -80,12 +80,21 @@ pub struct Summary {
 
 /// Default colour for layers the stack does not describe.
 pub fn layer_color(key: LayerKey) -> String {
-    const PALETTE: [&str; 10] = ["#d9a441", "#5fb39a", "#c26a8a", "#6c8fd6", "#c27b2a", "#8f7fd1", "#7aa35a", "#d1665a", "#4fa3b8", "#b08f5a"];
+    const PALETTE: [&str; 10] = [
+        "#d9a441", "#5fb39a", "#c26a8a", "#6c8fd6", "#c27b2a", "#8f7fd1", "#7aa35a", "#d1665a",
+        "#4fa3b8", "#b08f5a",
+    ];
     PALETTE[(key.0 as usize * 7 + key.1 as usize * 3) % PALETTE.len()].to_string()
 }
 
 impl Layout {
-    pub fn from_flat(flat: Flat, top: &str, cells: Vec<CellInfo>, ports: Vec<Port>, db_unit_m: f64) -> Layout {
+    pub fn from_flat(
+        flat: Flat,
+        top: &str,
+        cells: Vec<CellInfo>,
+        ports: Vec<Port>,
+        db_unit_m: f64,
+    ) -> Layout {
         let mut bbox = BBox::EMPTY;
         let mut layers = vec![];
         for (key, polys) in flat.layers {
@@ -96,12 +105,26 @@ impl Layout {
                 lb.union(b);
             }
             bbox.union(&lb);
-            layers.push(LayerData { key, polygons: polys, owners, bboxes, bbox: lb });
+            layers.push(LayerData {
+                key,
+                polygons: polys,
+                owners,
+                bboxes,
+                bbox: lb,
+            });
         }
         for p in &ports {
             bbox.add([p.x, p.y]);
         }
-        Layout { top: top.to_string(), cells, layers, ports, labels: flat.labels, bbox, db_unit_m }
+        Layout {
+            top: top.to_string(),
+            cells,
+            layers,
+            ports,
+            labels: flat.labels,
+            bbox,
+            db_unit_m,
+        }
     }
 
     /// Read a GDS file, flatten `top` (or the main top cell), and attach ports.
@@ -110,21 +133,40 @@ impl Layout {
         let top = match top {
             Some(t) => {
                 if lib.cell(t).is_none() {
-                    bail!("cell '{t}' is not in {}; cells: {}", gds.display(), lib.cells.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", "));
+                    bail!(
+                        "cell '{t}' is not in {}; cells: {}",
+                        gds.display(),
+                        lib.cells
+                            .iter()
+                            .map(|c| c.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
                 }
                 t.to_string()
             }
-            None => lib.top_cells().first().map(|s| s.to_string()).context("the GDS file has no top cell")?,
+            None => lib
+                .top_cells()
+                .first()
+                .map(|s| s.to_string())
+                .context("the GDS file has no top cell")?,
         };
         let flat = lib.flatten(&top, MAX_POLYGONS)?;
         let cells = flat
             .instances
             .iter()
             .map(|(name, &n)| {
-                let mut children: Vec<String> = lib.cell(name).map(|c| c.refs.iter().map(|r| r.cell.clone()).collect()).unwrap_or_default();
+                let mut children: Vec<String> = lib
+                    .cell(name)
+                    .map(|c| c.refs.iter().map(|r| r.cell.clone()).collect())
+                    .unwrap_or_default();
                 children.sort();
                 children.dedup();
-                CellInfo { name: name.clone(), instances: n, children }
+                CellInfo {
+                    name: name.clone(),
+                    instances: n,
+                    children,
+                }
             })
             .collect();
         let ports = match ports_file {
@@ -139,7 +181,9 @@ impl Layout {
 
     /// The layout of a project, or `None` if the project has no layout yet.
     pub fn of_project(p: &Project) -> Result<Option<Layout>> {
-        let Some(l) = &p.manifest.layout else { return Ok(None) };
+        let Some(l) = &p.manifest.layout else {
+            return Ok(None);
+        };
         let gds = p.path(&l.gds);
         if !gds.is_file() {
             return Ok(None);
@@ -164,10 +208,16 @@ impl Layout {
                 let sl = stack.and_then(|s| s.layer_for(l.key.0, l.key.1));
                 LayerSummary {
                     layer: [l.key.0, l.key.1],
-                    reference: ObjRef::Layer { layer: l.key.0, datatype: l.key.1 }.to_string(),
+                    reference: ObjRef::Layer {
+                        layer: l.key.0,
+                        datatype: l.key.1,
+                    }
+                    .to_string(),
                     name: sl.map(|s| s.name.clone()),
                     material: sl.map(|s| s.material.clone()),
-                    color: sl.and_then(|s| s.color.clone()).unwrap_or_else(|| layer_color(l.key)),
+                    color: sl
+                        .and_then(|s| s.color.clone())
+                        .unwrap_or_else(|| layer_color(l.key)),
                     polygons: l.polygons.len(),
                     bbox: l.bbox,
                     zmin: sl.map(|s| s.zmin),
@@ -192,7 +242,10 @@ impl Layout {
         let l = self.layer(key)?;
         let tris: Vec<Vec<u32>> = {
             use rayon::prelude::*;
-            l.polygons.par_iter().map(|p| geom::triangulate(p)).collect()
+            l.polygons
+                .par_iter()
+                .map(|p| geom::triangulate(p))
+                .collect()
         };
         let nverts: usize = l.polygons.iter().map(|p| p.len()).sum();
         let nidx: usize = tris.iter().map(|t| t.len()).sum();
@@ -246,13 +299,29 @@ impl Layout {
         for p in &self.ports {
             let r = (p.width / 2.0).max(tol);
             if (p.x - q[0]).hypot(p.y - q[1]) <= r {
-                return Some(Picked { reference: ObjRef::Port { name: p.name.clone() }.to_string(), description: describe_port(p), bbox: BBox { min: [p.x - r, p.y - r], max: [p.x + r, p.y + r] } });
+                return Some(Picked {
+                    reference: ObjRef::Port {
+                        name: p.name.clone(),
+                    }
+                    .to_string(),
+                    description: describe_port(p),
+                    bbox: BBox {
+                        min: [p.x - r, p.y - r],
+                        max: [p.x + r, p.y + r],
+                    },
+                });
             }
         }
         let mut order: Vec<&LayerData> = self.layers.iter().collect();
         order.sort_by(|a, b| {
-            let za = stack.and_then(|s| s.layer_for(a.key.0, a.key.1)).map(|l| l.zmax()).unwrap_or(0.0);
-            let zb = stack.and_then(|s| s.layer_for(b.key.0, b.key.1)).map(|l| l.zmax()).unwrap_or(0.0);
+            let za = stack
+                .and_then(|s| s.layer_for(a.key.0, a.key.1))
+                .map(|l| l.zmax())
+                .unwrap_or(0.0);
+            let zb = stack
+                .and_then(|s| s.layer_for(b.key.0, b.key.1))
+                .map(|l| l.zmax())
+                .unwrap_or(0.0);
             zb.partial_cmp(&za).unwrap_or(std::cmp::Ordering::Equal)
         });
         for l in order {
@@ -265,9 +334,17 @@ impl Layout {
                 }
                 if geom::point_in_polygon(p, q) || geom::dist_to_outline(p, q).0 <= tol {
                     let b = l.bboxes[i];
-                    let name = stack.and_then(|s| s.layer_for(l.key.0, l.key.1)).map(|s| s.name.clone()).unwrap_or_else(|| format!("{}/{}", l.key.0, l.key.1));
+                    let name = stack
+                        .and_then(|s| s.layer_for(l.key.0, l.key.1))
+                        .map(|s| s.name.clone())
+                        .unwrap_or_else(|| format!("{}/{}", l.key.0, l.key.1));
                     return Some(Picked {
-                        reference: ObjRef::Poly { layer: l.key.0, datatype: l.key.1, index: i }.to_string(),
+                        reference: ObjRef::Poly {
+                            layer: l.key.0,
+                            datatype: l.key.1,
+                            index: i,
+                        }
+                        .to_string(),
                         description: format!(
                             "polygon {i} on layer {name} from cell {}: {} vertices, {:.3} x {:.3} um, area {:.4} um^2",
                             l.owners.get(i).map(|s| s.as_str()).unwrap_or("?"),
@@ -288,7 +365,9 @@ impl Layout {
     pub fn gap(&self, a: (LayerKey, usize), b: (LayerKey, usize)) -> Option<(f64, P2, P2)> {
         let pa = self.layer(a.0)?.polygons.get(a.1)?;
         let pb = self.layer(b.0)?.polygons.get(b.1)?;
-        if pa.iter().any(|q| geom::point_in_polygon(pb, *q)) || pb.iter().any(|q| geom::point_in_polygon(pa, *q)) {
+        if pa.iter().any(|q| geom::point_in_polygon(pb, *q))
+            || pb.iter().any(|q| geom::point_in_polygon(pa, *q))
+        {
             return Some((0.0, pa[0], pa[0]));
         }
         let mut best = (f64::INFINITY, [0.0; 2], [0.0; 2]);
@@ -305,7 +384,13 @@ impl Layout {
 
     /// Polygons of a layer intersecting a box (indices).
     pub fn query(&self, key: LayerKey, b: &BBox) -> Vec<usize> {
-        self.layer(key).map(|l| (0..l.polygons.len()).filter(|&i| l.bboxes[i].intersects(b)).collect()).unwrap_or_default()
+        self.layer(key)
+            .map(|l| {
+                (0..l.polygons.len())
+                    .filter(|&i| l.bboxes[i].intersects(b))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Bounding box of an object reference, for highlighting.
@@ -313,12 +398,24 @@ impl Layout {
         match r {
             ObjRef::Port { name } => self.ports.iter().find(|p| &p.name == name).map(|p| {
                 let w = p.width.max(0.2) / 2.0;
-                BBox { min: [p.x - w, p.y - w], max: [p.x + w, p.y + w] }
+                BBox {
+                    min: [p.x - w, p.y - w],
+                    max: [p.x + w, p.y + w],
+                }
             }),
-            ObjRef::Poly { layer, datatype, index } => self.layer((*layer, *datatype)).and_then(|l| l.bboxes.get(*index).copied()),
+            ObjRef::Poly {
+                layer,
+                datatype,
+                index,
+            } => self
+                .layer((*layer, *datatype))
+                .and_then(|l| l.bboxes.get(*index).copied()),
             ObjRef::Layer { layer, datatype } => self.layer((*layer, *datatype)).map(|l| l.bbox),
             ObjRef::Cell { .. } => Some(self.bbox),
-            ObjRef::Point { x, y } => Some(BBox { min: [*x, *y], max: [*x, *y] }),
+            ObjRef::Point { x, y } => Some(BBox {
+                min: [*x, *y],
+                max: [*x, *y],
+            }),
             _ => None,
         }
     }
@@ -327,12 +424,18 @@ impl Layout {
     pub fn extrude(&self, stack: &Stack) -> Vec<(LayerKey, String, geom::Mesh)> {
         let mut out = vec![];
         for l in &self.layers {
-            let Some(sl) = stack.layer_for(l.key.0, l.key.1) else { continue };
+            let Some(sl) = stack.layer_for(l.key.0, l.key.1) else {
+                continue;
+            };
             let mut m = geom::Mesh::default();
             for p in &l.polygons {
                 m.extrude(p, sl.zmin, sl.zmax());
             }
-            out.push((l.key, sl.color.clone().unwrap_or_else(|| layer_color(l.key)), m));
+            out.push((
+                l.key,
+                sl.color.clone().unwrap_or_else(|| layer_color(l.key)),
+                m,
+            ));
         }
         out
     }
@@ -346,7 +449,9 @@ pub fn describe_port(p: &Port) -> String {
         p.y,
         p.width,
         p.orientation,
-        p.layer.map(|l| format!(", layer {}/{}", l[0], l[1])).unwrap_or_default()
+        p.layer
+            .map(|l| format!(", layer {}/{}", l[0], l[1]))
+            .unwrap_or_default()
     )
 }
 
@@ -378,7 +483,15 @@ pub fn parse_ports(text: &str) -> Result<Vec<Port>> {
 /// Polygon key for diffs: vertices rounded to 1 nm, rotated to start at the
 /// smallest vertex and oriented counter-clockwise.
 fn canon(p: &[P2]) -> Vec<(i64, i64)> {
-    let mut v: Vec<(i64, i64)> = p.iter().map(|q| ((q[0] * 1000.0).round() as i64, (q[1] * 1000.0).round() as i64)).collect();
+    let mut v: Vec<(i64, i64)> = p
+        .iter()
+        .map(|q| {
+            (
+                (q[0] * 1000.0).round() as i64,
+                (q[1] * 1000.0).round() as i64,
+            )
+        })
+        .collect();
     v.dedup();
     if v.len() > 1 && v.first() == v.last() {
         v.pop();
@@ -413,14 +526,28 @@ pub struct LayoutDiff {
 
 impl LayoutDiff {
     pub fn is_empty(&self) -> bool {
-        self.layers.iter().all(|l| l.added.is_empty() && l.removed.is_empty()) && self.ports_added.is_empty() && self.ports_removed.is_empty() && self.ports_moved.is_empty()
+        self.layers
+            .iter()
+            .all(|l| l.added.is_empty() && l.removed.is_empty())
+            && self.ports_added.is_empty()
+            && self.ports_removed.is_empty()
+            && self.ports_moved.is_empty()
     }
 }
 
 /// Polygons added (indices into `after`) and removed (indices into `before`) per layer.
 pub fn diff(before: &Layout, after: &Layout) -> LayoutDiff {
-    let keys: BTreeSet<LayerKey> = before.layers.iter().chain(&after.layers).map(|l| l.key).collect();
-    let mut out = LayoutDiff { bbox_before: before.bbox, bbox_after: after.bbox, ..Default::default() };
+    let keys: BTreeSet<LayerKey> = before
+        .layers
+        .iter()
+        .chain(&after.layers)
+        .map(|l| l.key)
+        .collect();
+    let mut out = LayoutDiff {
+        bbox_before: before.bbox,
+        bbox_after: after.bbox,
+        ..Default::default()
+    };
     for k in keys {
         let empty = vec![];
         let a = before.layer(k).map(|l| &l.polygons).unwrap_or(&empty);
@@ -447,7 +574,10 @@ pub fn diff(before: &Layout, after: &Layout) -> LayoutDiff {
             out.layers.push(LayerDiff {
                 layer: [k.0, k.1],
                 added_area: added.iter().map(|&i| geom::signed_area(&b[i]).abs()).sum(),
-                removed_area: removed.iter().map(|&i| geom::signed_area(&a[i]).abs()).sum(),
+                removed_area: removed
+                    .iter()
+                    .map(|&i| geom::signed_area(&a[i]).abs())
+                    .sum(),
                 added,
                 removed,
             });
@@ -456,7 +586,13 @@ pub fn diff(before: &Layout, after: &Layout) -> LayoutDiff {
     for p in &after.ports {
         match before.ports.iter().find(|q| q.name == p.name) {
             None => out.ports_added.push(p.name.clone()),
-            Some(q) if (q.x - p.x).abs() > 1e-4 || (q.y - p.y).abs() > 1e-4 || (q.orientation - p.orientation).abs() > 1e-6 => out.ports_moved.push(p.name.clone()),
+            Some(q)
+                if (q.x - p.x).abs() > 1e-4
+                    || (q.y - p.y).abs() > 1e-4
+                    || (q.orientation - p.orientation).abs() > 1e-6 =>
+            {
+                out.ports_moved.push(p.name.clone())
+            }
             _ => {}
         }
     }
@@ -477,13 +613,25 @@ mod tests {
         let mut w = Writer::new("t", 1e-9);
         w.begin_cell("top");
         w.polygon((1, 0), &[[0.0, 0.0], [10.0, 0.0], [10.0, 0.5], [0.0, 0.5]]);
-        w.polygon((1, 0), &[[0.0, 1.0 + shift], [10.0, 1.0 + shift], [10.0, 1.5 + shift], [0.0, 1.5 + shift]]);
+        w.polygon(
+            (1, 0),
+            &[
+                [0.0, 1.0 + shift],
+                [10.0, 1.0 + shift],
+                [10.0, 1.5 + shift],
+                [0.0, 1.5 + shift],
+            ],
+        );
         w.end_cell();
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("a.gds");
         std::fs::write(&p, w.finish()).unwrap();
         let ports = d.path().join("p.json");
-        std::fs::write(&ports, r#"[{"name":"o1","center":[0,0.25],"width":0.5,"orientation":180,"layer":[1,0]}]"#).unwrap();
+        std::fs::write(
+            &ports,
+            r#"[{"name":"o1","center":[0,0.25],"width":0.5,"orientation":180,"layer":[1,0]}]"#,
+        )
+        .unwrap();
         Layout::read(&p, None, Some(&ports)).unwrap()
     }
 
@@ -494,7 +642,10 @@ mod tests {
         let s = Stack::soi220();
         let p = a.pick([5.0, 0.25], 0.01, Some(&s)).unwrap();
         assert_eq!(p.reference, "poly:1/0#0");
-        assert_eq!(a.pick([0.0, 0.25], 0.05, Some(&s)).unwrap().reference, "port:o1");
+        assert_eq!(
+            a.pick([0.0, 0.25], 0.05, Some(&s)).unwrap().reference,
+            "port:o1"
+        );
         assert!(a.pick([5.0, 0.75], 0.01, Some(&s)).is_none());
         let (g, _, _) = a.gap(((1, 0), 0), ((1, 0), 1)).unwrap();
         assert!((g - 0.5).abs() < 1e-6);

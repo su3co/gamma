@@ -71,3 +71,15 @@ strip = "debuginfo"
 
 [profile.dev.package."*"]
 opt-level = 2
+
+# Style lints the code base does not follow; everything else is denied in CI.
+[workspace.lints.clippy]
+collapsible_if = "allow"
+collapsible_match = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+needless_range_loop = "allow"
+field_reassign_with_default = "allow"
+map_entry = "allow"
+while_let_loop = "allow"
+unnecessary_find_map = "allow"

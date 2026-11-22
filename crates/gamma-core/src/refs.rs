@@ -11,17 +11,47 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ObjRef {
-    Cell { name: String },
-    Layer { layer: u16, datatype: u16 },
-    Port { name: String },
-    Poly { layer: u16, datatype: u16, index: usize },
-    Sim { name: String },
-    Monitor { sim: String, name: String },
-    Source { sim: String, name: String },
-    Structure { sim: String, index: usize },
-    Run { sim: String, id: String },
-    Point { x: f64, y: f64 },
-    File { path: String },
+    Cell {
+        name: String,
+    },
+    Layer {
+        layer: u16,
+        datatype: u16,
+    },
+    Port {
+        name: String,
+    },
+    Poly {
+        layer: u16,
+        datatype: u16,
+        index: usize,
+    },
+    Sim {
+        name: String,
+    },
+    Monitor {
+        sim: String,
+        name: String,
+    },
+    Source {
+        sim: String,
+        name: String,
+    },
+    Structure {
+        sim: String,
+        index: usize,
+    },
+    Run {
+        sim: String,
+        id: String,
+    },
+    Point {
+        x: f64,
+        y: f64,
+    },
+    File {
+        path: String,
+    },
 }
 
 impl ObjRef {
@@ -45,7 +75,11 @@ impl ObjRef {
             "poly" => {
                 let (l, i) = v.split_once('#')?;
                 let (layer, datatype) = ld(l)?;
-                ObjRef::Poly { layer, datatype, index: i.parse().ok()? }
+                ObjRef::Poly {
+                    layer,
+                    datatype,
+                    index: i.parse().ok()?,
+                }
             }
             "sim" => ObjRef::Sim { name: v.into() },
             "monitor" => {
@@ -58,7 +92,10 @@ impl ObjRef {
             }
             "structure" => {
                 let (sim, i) = pair(v)?;
-                ObjRef::Structure { sim, index: i.parse().ok()? }
+                ObjRef::Structure {
+                    sim,
+                    index: i.parse().ok()?,
+                }
             }
             "run" => {
                 let (sim, id) = pair(v)?;
@@ -66,7 +103,10 @@ impl ObjRef {
             }
             "point" => {
                 let (x, y) = v.split_once(',')?;
-                ObjRef::Point { x: x.trim().parse().ok()?, y: y.trim().parse().ok()? }
+                ObjRef::Point {
+                    x: x.trim().parse().ok()?,
+                    y: y.trim().parse().ok()?,
+                }
             }
             "file" => ObjRef::File { path: v.into() },
             _ => return None,
@@ -80,7 +120,11 @@ impl fmt::Display for ObjRef {
             ObjRef::Cell { name } => write!(f, "cell:{name}"),
             ObjRef::Layer { layer, datatype } => write!(f, "layer:{layer}/{datatype}"),
             ObjRef::Port { name } => write!(f, "port:{name}"),
-            ObjRef::Poly { layer, datatype, index } => write!(f, "poly:{layer}/{datatype}#{index}"),
+            ObjRef::Poly {
+                layer,
+                datatype,
+                index,
+            } => write!(f, "poly:{layer}/{datatype}#{index}"),
             ObjRef::Sim { name } => write!(f, "sim:{name}"),
             ObjRef::Monitor { sim, name } => write!(f, "monitor:{sim}/{name}"),
             ObjRef::Source { sim, name } => write!(f, "source:{sim}/{name}"),
@@ -97,7 +141,15 @@ mod tests {
     use super::*;
     #[test]
     fn roundtrip() {
-        for s in ["cell:ring", "layer:1/0", "port:o1", "poly:1/0#12", "monitor:ringdown/through", "point:1.25,-3", "run:a/b"] {
+        for s in [
+            "cell:ring",
+            "layer:1/0",
+            "port:o1",
+            "poly:1/0#12",
+            "monitor:ringdown/through",
+            "point:1.25,-3",
+            "run:a/b",
+        ] {
             let r = ObjRef::parse(s).unwrap();
             assert_eq!(r.to_string(), s);
         }

@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 pub enum Device {
     Cpu,
     /// One or several NVIDIA GPUs of this machine.
-    Cuda { gpus: Vec<usize> },
+    Cuda {
+        gpus: Vec<usize>,
+    },
 }
 
 impl Device {
@@ -26,10 +28,15 @@ impl Device {
                 if n == 0 {
                     anyhow::bail!("no CUDA GPUs on this machine (or gamma was built without CUDA)");
                 }
-                return Ok(Device::Cuda { gpus: (0..n).collect() });
+                return Ok(Device::Cuda {
+                    gpus: (0..n).collect(),
+                });
             }
-            let v: Result<Vec<usize>, _> = rest.split(',').map(|x| x.trim().parse::<usize>()).collect();
-            return Ok(Device::Cuda { gpus: v.map_err(|_| anyhow::anyhow!("bad GPU list in '{s}'"))? });
+            let v: Result<Vec<usize>, _> =
+                rest.split(',').map(|x| x.trim().parse::<usize>()).collect();
+            return Ok(Device::Cuda {
+                gpus: v.map_err(|_| anyhow::anyhow!("bad GPU list in '{s}'"))?,
+            });
         }
         anyhow::bail!("unknown device '{s}': use cpu, cuda, cuda:0, cuda:0,1 or cuda:all")
     }
@@ -37,7 +44,13 @@ impl Device {
     pub fn label(&self) -> String {
         match self {
             Device::Cpu => "cpu".into(),
-            Device::Cuda { gpus } => format!("cuda:{}", gpus.iter().map(|g| g.to_string()).collect::<Vec<_>>().join(",")),
+            Device::Cuda { gpus } => format!(
+                "cuda:{}",
+                gpus.iter()
+                    .map(|g| g.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
         }
     }
 }
@@ -104,7 +117,10 @@ pub fn total_memory() -> Option<u64> {
     }
     #[cfg(target_os = "macos")]
     {
-        let out = std::process::Command::new("sysctl").args(["-n", "hw.memsize"]).output().ok()?;
+        let out = std::process::Command::new("sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+            .ok()?;
         String::from_utf8_lossy(&out.stdout).trim().parse().ok()
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -116,7 +132,10 @@ pub fn total_memory() -> Option<u64> {
 pub fn cpu_name() -> String {
     #[cfg(target_os = "macos")]
     {
-        if let Ok(out) = std::process::Command::new("sysctl").args(["-n", "machdep.cpu.brand_string"]).output() {
+        if let Ok(out) = std::process::Command::new("sysctl")
+            .args(["-n", "machdep.cpu.brand_string"])
+            .output()
+        {
             let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !s.is_empty() {
                 return s;
@@ -138,20 +157,38 @@ pub fn cpu_name() -> String {
 
 /// Devices of this machine.
 pub fn local_devices() -> Vec<DeviceInfo> {
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
     #[allow(unused_mut)]
-    let mut out = vec![DeviceInfo { id: "cpu".into(), name: cpu_name(), memory: total_memory(), threads: Some(threads), throughput: default_throughput("cpu", threads) }];
+    let mut out = vec![DeviceInfo {
+        id: "cpu".into(),
+        name: cpu_name(),
+        memory: total_memory(),
+        threads: Some(threads),
+        throughput: default_throughput("cpu", threads),
+    }];
     #[cfg(feature = "cuda")]
     for i in 0..cuda_count() {
         let (name, mem) = cuda_info(i);
         let tp = default_throughput(&name, 0);
-        out.push(DeviceInfo { id: format!("cuda:{i}"), name, memory: mem, threads: None, throughput: tp });
+        out.push(DeviceInfo {
+            id: format!("cuda:{i}"),
+            name,
+            memory: mem,
+            threads: None,
+            throughput: tp,
+        });
     }
     out
 }
 
 pub fn precision() -> &'static str {
-    if lightsim_core::REAL_IS_F64 { "f64" } else { "f32" }
+    if lightsim_core::REAL_IS_F64 {
+        "f64"
+    } else {
+        "f32"
+    }
 }
 
 #[cfg(test)]
@@ -160,7 +197,10 @@ mod tests {
     #[test]
     fn parse() {
         assert_eq!(Device::parse("cpu").unwrap(), Device::Cpu);
-        assert_eq!(Device::parse("cuda:0,1").unwrap(), Device::Cuda { gpus: vec![0, 1] });
+        assert_eq!(
+            Device::parse("cuda:0,1").unwrap(),
+            Device::Cuda { gpus: vec![0, 1] }
+        );
         assert_eq!(Device::parse("cuda").unwrap().label(), "cuda:0");
         assert!(Device::parse("tpu").is_err());
         assert!(!local_devices().is_empty());

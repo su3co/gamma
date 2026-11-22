@@ -17,8 +17,14 @@ impl Client {
     pub fn connect(actor: &str) -> Result<Client> {
         let exe = std::env::current_exe()?;
         let info = gamma_hub::connect_or_spawn(&exe)?;
-        let http = reqwest::blocking::Client::builder().timeout(Duration::from_secs(3600)).build()?;
-        Ok(Client { info, http, actor: actor.into() })
+        let http = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(3600))
+            .build()?;
+        Ok(Client {
+            info,
+            http,
+            actor: actor.into(),
+        })
     }
 
     fn url(&self, path: &str) -> String {
@@ -31,44 +37,89 @@ impl Client {
         }
         let code = r.status();
         let t = r.text().unwrap_or_default();
-        let msg = serde_json::from_str::<Value>(&t).ok().and_then(|v| v["error"].as_str().map(|s| s.to_string())).unwrap_or(t);
+        let msg = serde_json::from_str::<Value>(&t)
+            .ok()
+            .and_then(|v| v["error"].as_str().map(|s| s.to_string()))
+            .unwrap_or(t);
         bail!("{msg} (hub answered {code})")
     }
 
     pub fn get(&self, path: &str) -> Result<Value> {
-        let r = self.http.get(self.url(path)).bearer_auth(&self.info.token).header("x-gamma-actor", &self.actor).send().context("talking to the hub")?;
+        let r = self
+            .http
+            .get(self.url(path))
+            .bearer_auth(&self.info.token)
+            .header("x-gamma-actor", &self.actor)
+            .send()
+            .context("talking to the hub")?;
         Ok(Self::check(r)?.json()?)
     }
 
     pub fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
-        let r = self.http.get(self.url(path)).bearer_auth(&self.info.token).header("x-gamma-actor", &self.actor).send().context("talking to the hub")?;
+        let r = self
+            .http
+            .get(self.url(path))
+            .bearer_auth(&self.info.token)
+            .header("x-gamma-actor", &self.actor)
+            .send()
+            .context("talking to the hub")?;
         Ok(Self::check(r)?.bytes()?.to_vec())
     }
 
     pub fn post(&self, path: &str, body: Value) -> Result<Value> {
-        let r = self.http.post(self.url(path)).bearer_auth(&self.info.token).header("x-gamma-actor", &self.actor).json(&body).send().context("talking to the hub")?;
+        let r = self
+            .http
+            .post(self.url(path))
+            .bearer_auth(&self.info.token)
+            .header("x-gamma-actor", &self.actor)
+            .json(&body)
+            .send()
+            .context("talking to the hub")?;
         Ok(Self::check(r)?.json()?)
     }
 
     pub fn put(&self, path: &str, body: Value) -> Result<Value> {
-        let r = self.http.put(self.url(path)).bearer_auth(&self.info.token).header("x-gamma-actor", &self.actor).json(&body).send().context("talking to the hub")?;
+        let r = self
+            .http
+            .put(self.url(path))
+            .bearer_auth(&self.info.token)
+            .header("x-gamma-actor", &self.actor)
+            .json(&body)
+            .send()
+            .context("talking to the hub")?;
         Ok(Self::check(r)?.json()?)
     }
 
     pub fn delete(&self, path: &str) -> Result<Value> {
-        let r = self.http.delete(self.url(path)).bearer_auth(&self.info.token).header("x-gamma-actor", &self.actor).send().context("talking to the hub")?;
+        let r = self
+            .http
+            .delete(self.url(path))
+            .bearer_auth(&self.info.token)
+            .header("x-gamma-actor", &self.actor)
+            .send()
+            .context("talking to the hub")?;
         Ok(Self::check(r)?.json()?)
     }
 
     /// Open the project containing `dir`; returns its id.
     pub fn open(&self, dir: &Path) -> Result<String> {
-        let dir = dir.canonicalize().with_context(|| format!("no such folder {}", dir.display()))?;
+        let dir = dir
+            .canonicalize()
+            .with_context(|| format!("no such folder {}", dir.display()))?;
         let v = self.post("/api/open", json!({"path": dir}))?;
-        v["id"].as_str().map(|s| s.to_string()).context("hub did not return a project id")
+        v["id"]
+            .as_str()
+            .map(|s| s.to_string())
+            .context("hub did not return a project id")
     }
 
     /// Wait for a job to finish; calls `tick` with the job on every poll.
-    pub fn wait_job(&self, id: &str, timeout: Option<Duration>, mut tick: impl FnMut(&Value)) -> Result<Value> {
+    pub fn wait_job(
+        &self,
+        id: &str,
+        timeout: Option<Duration>,
+        mut tick: impl FnMut(&Value),
+    ) -> Result<Value> {
         let t0 = std::time::Instant::now();
         loop {
             let j = self.get(&format!("/api/jobs/{id}"))?;
@@ -77,10 +128,10 @@ impl Client {
                 Some("done") | Some("failed") | Some("cancelled") => return Ok(j),
                 _ => {}
             }
-            if let Some(t) = timeout {
-                if t0.elapsed() > t {
-                    return Ok(j);
-                }
+            if let Some(t) = timeout
+                && t0.elapsed() > t
+            {
+                return Ok(j);
             }
             std::thread::sleep(Duration::from_millis(700));
         }

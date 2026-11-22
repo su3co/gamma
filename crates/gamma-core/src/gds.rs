@@ -77,10 +77,16 @@ pub struct Xform {
 }
 
 impl Xform {
-    pub const IDENTITY: Xform = Xform { m: [[1.0, 0.0], [0.0, 1.0]], t: [0.0, 0.0] };
+    pub const IDENTITY: Xform = Xform {
+        m: [[1.0, 0.0], [0.0, 1.0]],
+        t: [0.0, 0.0],
+    };
 
     pub fn apply(&self, p: [f64; 2]) -> [f64; 2] {
-        [self.m[0][0] * p[0] + self.m[0][1] * p[1] + self.t[0], self.m[1][0] * p[0] + self.m[1][1] * p[1] + self.t[1]]
+        [
+            self.m[0][0] * p[0] + self.m[0][1] * p[1] + self.t[0],
+            self.m[1][0] * p[0] + self.m[1][1] * p[1] + self.t[1],
+        ]
     }
 
     /// self ∘ other (apply other first).
@@ -89,8 +95,14 @@ impl Xform {
         let b = &other.m;
         Xform {
             m: [
-                [a[0][0] * b[0][0] + a[0][1] * b[1][0], a[0][0] * b[0][1] + a[0][1] * b[1][1]],
-                [a[1][0] * b[0][0] + a[1][1] * b[1][0], a[1][0] * b[0][1] + a[1][1] * b[1][1]],
+                [
+                    a[0][0] * b[0][0] + a[0][1] * b[1][0],
+                    a[0][0] * b[0][1] + a[0][1] * b[1][1],
+                ],
+                [
+                    a[1][0] * b[0][0] + a[1][1] * b[1][0],
+                    a[1][0] * b[0][1] + a[1][1] * b[1][1],
+                ],
             ],
             t: self.apply(other.t),
         }
@@ -102,7 +114,10 @@ impl Xform {
         // reflect about x (y -> -y), scale, rotate, translate
         Xform {
             m: [[r.mag * c, -r.mag * s * f], [r.mag * s, r.mag * c * f]],
-            t: [r.origin[0] as f64 + offset[0], r.origin[1] as f64 + offset[1]],
+            t: [
+                r.origin[0] as f64 + offset[0],
+                r.origin[1] as f64 + offset[1],
+            ],
         }
     }
 
@@ -148,11 +163,15 @@ fn to_real8(v: f64) -> [u8; 8] {
 impl Library {
     pub fn read(path: &Path) -> Result<Library> {
         let data = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-        Library::parse(&data).with_context(|| format!("{} is not a readable GDSII file", path.display()))
+        Library::parse(&data)
+            .with_context(|| format!("{} is not a readable GDSII file", path.display()))
     }
 
     pub fn parse(data: &[u8]) -> Result<Library> {
-        let mut lib = Library { db_unit_m: 1e-9, ..Default::default() };
+        let mut lib = Library {
+            db_unit_m: 1e-9,
+            ..Default::default()
+        };
         let mut pos = 0usize;
         let mut cell: Option<Cell> = None;
         // current element
@@ -186,9 +205,25 @@ impl Library {
             }
             let body = &data[pos + 4..pos + len];
             pos += len;
-            let i16s = || body.chunks_exact(2).map(|c| i16::from_be_bytes([c[0], c[1]])).collect::<Vec<_>>();
-            let i32s = || body.chunks_exact(4).map(|c| i32::from_be_bytes([c[0], c[1], c[2], c[3]])).collect::<Vec<_>>();
-            let string = || String::from_utf8_lossy(body).trim_end_matches('\0').to_string();
+            let i16s = || {
+                body.as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|c| i16::from_be_bytes([c[0], c[1]]))
+                    .collect::<Vec<_>>()
+            };
+            let i32s = || {
+                body.as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| i32::from_be_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect::<Vec<_>>()
+            };
+            let string = || {
+                String::from_utf8_lossy(body)
+                    .trim_end_matches('\0')
+                    .to_string()
+            };
             match rt {
                 0x02 => lib.name = string(),
                 0x03 => {
@@ -208,7 +243,13 @@ impl Library {
                         lib.cells.push(c);
                     }
                 }
-                0x08 | 0x09 | 0x0A | 0x0B | 0x0C | 0x2D => el = Some(El { kind: rt, mag: 1.0, ..Default::default() }),
+                0x08 | 0x09 | 0x0A | 0x0B | 0x0C | 0x2D => {
+                    el = Some(El {
+                        kind: rt,
+                        mag: 1.0,
+                        ..Default::default()
+                    })
+                }
                 0x0D => {
                     if let Some(e) = el.as_mut() {
                         e.layer = i16s().first().copied().unwrap_or(0) as u16;
@@ -232,7 +273,7 @@ impl Library {
                 0x10 => {
                     if let Some(e) = el.as_mut() {
                         let v = i32s();
-                        e.xy = v.chunks_exact(2).map(|c| [c[0], c[1]]).collect();
+                        e.xy = v.as_chunks::<2>().0.iter().map(|c| [c[0], c[1]]).collect();
                     }
                 }
                 0x12 => {
@@ -254,28 +295,30 @@ impl Library {
                     }
                 }
                 0x1A => {
-                    if let Some(e) = el.as_mut() {
-                        if body.len() >= 2 {
-                            e.reflect = body[0] & 0x80 != 0;
-                        }
+                    if let Some(e) = el.as_mut()
+                        && body.len() >= 2
+                    {
+                        e.reflect = body[0] & 0x80 != 0;
                     }
                 }
                 0x1B => {
-                    if let Some(e) = el.as_mut() {
-                        if body.len() >= 8 {
-                            e.mag = real8(body);
-                        }
+                    if let Some(e) = el.as_mut()
+                        && body.len() >= 8
+                    {
+                        e.mag = real8(body);
                     }
                 }
                 0x1C => {
-                    if let Some(e) = el.as_mut() {
-                        if body.len() >= 8 {
-                            e.angle = real8(body);
-                        }
+                    if let Some(e) = el.as_mut()
+                        && body.len() >= 8
+                    {
+                        e.angle = real8(body);
                     }
                 }
                 0x11 => {
-                    let (Some(e), Some(c)) = (el.take(), cell.as_mut()) else { continue };
+                    let (Some(e), Some(c)) = (el.take(), cell.as_mut()) else {
+                        continue;
+                    };
                     let layer = (e.layer, e.dtype);
                     match e.kind {
                         0x08 | 0x2D => {
@@ -289,34 +332,54 @@ impl Library {
                         }
                         0x09 => {
                             if e.xy.len() >= 2 {
-                                c.paths.push(RawPath { layer, width: e.width, pathtype: e.pathtype, pts: e.xy })
+                                c.paths.push(RawPath {
+                                    layer,
+                                    width: e.width,
+                                    pathtype: e.pathtype,
+                                    pts: e.xy,
+                                })
                             }
                         }
                         0x0C => {
                             if let Some(&at) = e.xy.first() {
-                                c.texts.push(RawText { layer, text: e.text, at })
+                                c.texts.push(RawText {
+                                    layer,
+                                    text: e.text,
+                                    at,
+                                })
                             }
                         }
                         0x0A => {
                             if let Some(&o) = e.xy.first() {
-                                c.refs.push(CellRef { cell: e.sname, origin: o, reflect: e.reflect, mag: e.mag, angle_deg: e.angle, array: None })
-                            }
-                        }
-                        0x0B => {
-                            if e.xy.len() >= 3 && e.colrow.0 > 0 && e.colrow.1 > 0 {
-                                let (cols, rows) = e.colrow;
-                                let o = e.xy[0];
-                                let cv = [(e.xy[1][0] - o[0]) as f64 / cols as f64, (e.xy[1][1] - o[1]) as f64 / cols as f64];
-                                let rv = [(e.xy[2][0] - o[0]) as f64 / rows as f64, (e.xy[2][1] - o[1]) as f64 / rows as f64];
                                 c.refs.push(CellRef {
                                     cell: e.sname,
                                     origin: o,
                                     reflect: e.reflect,
                                     mag: e.mag,
                                     angle_deg: e.angle,
-                                    array: Some((cols, rows, cv, rv)),
+                                    array: None,
                                 })
                             }
+                        }
+                        0x0B if e.xy.len() >= 3 && e.colrow.0 > 0 && e.colrow.1 > 0 => {
+                            let (cols, rows) = e.colrow;
+                            let o = e.xy[0];
+                            let cv = [
+                                (e.xy[1][0] - o[0]) as f64 / cols as f64,
+                                (e.xy[1][1] - o[1]) as f64 / cols as f64,
+                            ];
+                            let rv = [
+                                (e.xy[2][0] - o[0]) as f64 / rows as f64,
+                                (e.xy[2][1] - o[1]) as f64 / rows as f64,
+                            ];
+                            c.refs.push(CellRef {
+                                cell: e.sname,
+                                origin: o,
+                                reflect: e.reflect,
+                                mag: e.mag,
+                                angle_deg: e.angle,
+                                array: Some((cols, rows, cv, rv)),
+                            })
                         }
                         _ => {}
                     }
@@ -344,8 +407,14 @@ impl Library {
                 referenced.insert(r.cell.as_str());
             }
         }
-        let mut tops: Vec<&Cell> = self.cells.iter().filter(|c| !referenced.contains(c.name.as_str()) && !c.name.starts_with("$$$")).collect();
-        tops.sort_by_key(|c| std::cmp::Reverse(c.refs.len() * 100 + c.boundaries.len() + c.paths.len()));
+        let mut tops: Vec<&Cell> = self
+            .cells
+            .iter()
+            .filter(|c| !referenced.contains(c.name.as_str()) && !c.name.starts_with("$$$"))
+            .collect();
+        tops.sort_by_key(|c| {
+            std::cmp::Reverse(c.refs.len() * 100 + c.boundaries.len() + c.paths.len())
+        });
         tops.into_iter().map(|c| c.name.as_str()).collect()
     }
 
@@ -358,23 +427,42 @@ impl Library {
     pub fn flatten(&self, top: &str, max_polygons: usize) -> Result<Flat> {
         let mut out = Flat::default();
         let s = self.um_per_db();
-        let base = Xform { m: [[s, 0.0], [0.0, s]], t: [0.0, 0.0] };
+        let base = Xform {
+            m: [[s, 0.0], [0.0, s]],
+            t: [0.0, 0.0],
+        };
         let mut stack = vec![];
         self.flatten_rec(top, &base, &mut out, &mut stack, max_polygons)?;
         Ok(out)
     }
 
-    fn flatten_rec(&self, name: &str, xf: &Xform, out: &mut Flat, stack: &mut Vec<String>, max: usize) -> Result<()> {
-        let Some(cell) = self.cell(name) else { bail!("cell '{name}' is referenced but not defined") };
+    fn flatten_rec(
+        &self,
+        name: &str,
+        xf: &Xform,
+        out: &mut Flat,
+        stack: &mut Vec<String>,
+        max: usize,
+    ) -> Result<()> {
+        let Some(cell) = self.cell(name) else {
+            bail!("cell '{name}' is referenced but not defined")
+        };
         if stack.iter().any(|n| n == name) {
-            bail!("cell '{name}' references itself through {}", stack.join(" -> "));
+            bail!(
+                "cell '{name}' references itself through {}",
+                stack.join(" -> ")
+            );
         }
         if stack.len() > 64 {
             bail!("cell hierarchy deeper than 64 levels");
         }
         *out.instances.entry(name.to_string()).or_insert(0) += 1;
         for p in &cell.boundaries {
-            let mut pts: Vec<[f64; 2]> = p.pts.iter().map(|q| xf.apply([q[0] as f64, q[1] as f64])).collect();
+            let mut pts: Vec<[f64; 2]> = p
+                .pts
+                .iter()
+                .map(|q| xf.apply([q[0] as f64, q[1] as f64]))
+                .collect();
             if xf.is_mirror() {
                 pts.reverse();
             }
@@ -382,24 +470,46 @@ impl Library {
         }
         for p in &cell.paths {
             let pts: Vec<[f64; 2]> = p.pts.iter().map(|q| [q[0] as f64, q[1] as f64]).collect();
-            for poly in crate::geom::path_to_polygon(&pts, p.width.unsigned_abs() as f64, p.pathtype != 0) {
+            for poly in
+                crate::geom::path_to_polygon(&pts, p.width.unsigned_abs() as f64, p.pathtype != 0)
+            {
                 let poly: Vec<[f64; 2]> = poly.iter().map(|q| xf.apply(*q)).collect();
                 out.push(p.layer, poly, name, max)?;
             }
         }
         for t in &cell.texts {
             let q = xf.apply([t.at[0] as f64, t.at[1] as f64]);
-            out.labels.push(Label { layer: t.layer, text: t.text.clone(), x: q[0], y: q[1] });
+            out.labels.push(Label {
+                layer: t.layer,
+                text: t.text.clone(),
+                x: q[0],
+                y: q[1],
+            });
         }
         stack.push(name.to_string());
         for r in &cell.refs {
             match r.array {
-                None => self.flatten_rec(&r.cell, &xf.then(&Xform::of_ref(r, [0.0, 0.0])), out, stack, max)?,
+                None => self.flatten_rec(
+                    &r.cell,
+                    &xf.then(&Xform::of_ref(r, [0.0, 0.0])),
+                    out,
+                    stack,
+                    max,
+                )?,
                 Some((cols, rows, cv, rv)) => {
                     for i in 0..cols {
                         for j in 0..rows {
-                            let off = [i as f64 * cv[0] + j as f64 * rv[0], i as f64 * cv[1] + j as f64 * rv[1]];
-                            self.flatten_rec(&r.cell, &xf.then(&Xform::of_ref(r, off)), out, stack, max)?;
+                            let off = [
+                                i as f64 * cv[0] + j as f64 * rv[0],
+                                i as f64 * cv[1] + j as f64 * rv[1],
+                            ];
+                            self.flatten_rec(
+                                &r.cell,
+                                &xf.then(&Xform::of_ref(r, off)),
+                                out,
+                                stack,
+                                max,
+                            )?;
                         }
                     }
                 }
@@ -427,10 +537,15 @@ impl Flat {
     fn push(&mut self, layer: LayerKey, pts: Vec<[f64; 2]>, owner: &str, max: usize) -> Result<()> {
         self.count += 1;
         if self.count > max {
-            bail!("the layout has more than {max} polygons after flattening; open a sub-cell instead");
+            bail!(
+                "the layout has more than {max} polygons after flattening; open a sub-cell instead"
+            );
         }
         self.layers.entry(layer).or_default().push(pts);
-        self.owners.entry(layer).or_default().push(owner.to_string());
+        self.owners
+            .entry(layer)
+            .or_default()
+            .push(owner.to_string());
         Ok(())
     }
 
@@ -447,7 +562,10 @@ pub struct Writer {
 
 impl Writer {
     pub fn new(libname: &str, db_unit_m: f64) -> Writer {
-        let mut w = Writer { buf: vec![], db_unit_m };
+        let mut w = Writer {
+            buf: vec![],
+            db_unit_m,
+        };
         w.rec(0x00, 0x02, &600i16.to_be_bytes());
         w.rec(0x01, 0x02, &[0u8; 24]);
         w.str_rec(0x02, libname);

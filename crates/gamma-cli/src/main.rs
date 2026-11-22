@@ -13,7 +13,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[derive(Parser)]
-#[command(name = "gamma", version, about = "gamma: design, simulate and test photonic integrated circuits (hub, MCP server, worker and project commands)")]
+#[command(
+    name = "gamma",
+    version,
+    about = "gamma: design, simulate and test photonic integrated circuits (hub, MCP server, worker and project commands)"
+)]
 struct Cli {
     /// Project folder (default: the current folder or a parent with gamma.toml)
     #[arg(long, short = 'C', global = true)]
@@ -166,9 +170,13 @@ enum RemoteCmd {
         program: Option<String>,
     },
     List,
-    Remove { name: String },
+    Remove {
+        name: String,
+    },
     /// Check the connection, the installed gamma and its GPUs
-    Test { name: String },
+    Test {
+        name: String,
+    },
     /// Copy a gamma build for the host's platform to the host
     Install {
         name: String,
@@ -217,22 +225,35 @@ fn find_ui_dir(explicit: Option<PathBuf>) -> Option<PathBuf> {
     }
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    let cands = [dir.join("ui"), dir.join("../share/gamma/ui"), dir.join("../Resources/ui"), dir.join("../lib/gamma/ui"), dir.join("../../app/ui/dist")];
+    let cands = [
+        dir.join("ui"),
+        dir.join("../share/gamma/ui"),
+        dir.join("../Resources/ui"),
+        dir.join("../lib/gamma/ui"),
+        dir.join("../../app/ui/dist"),
+    ];
     cands.into_iter().find(|c| c.join("index.html").is_file())
 }
 
 fn run_hub(port: u16, ui: Option<PathBuf>, idle_exit_min: u64, print_url: bool) -> Result<()> {
-    if let Some(i) = gamma_hub::read_hub_info() {
-        if gamma_hub::discovery::alive(&i) {
-            println!("a hub is already running at {} (pid {})", i.url(), i.pid);
-            if print_url {
-                println!("{}/?token={}", i.url(), i.token);
-            }
-            return Ok(());
+    if let Some(i) = gamma_hub::read_hub_info()
+        && gamma_hub::discovery::alive(&i)
+    {
+        println!("a hub is already running at {} (pid {})", i.url(), i.pid);
+        if print_url {
+            println!("{}/?token={}", i.url(), i.token);
         }
+        return Ok(());
     }
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into())).with_writer(std::io::stderr).init();
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
     rt.block_on(async move {
         let token: String = (0..32).map(|_| format!("{:x}", rand::random::<u8>() & 0xf)).collect();
         let worker = std::env::current_exe()?;
@@ -293,10 +314,21 @@ fn main() {
 
 fn real_main(cli: &Cli) -> Result<()> {
     match &cli.cmd {
-        Cmd::Hub { port, ui, idle_exit_min, print_url } => run_hub(*port, ui.clone(), *idle_exit_min, *print_url),
+        Cmd::Hub {
+            port,
+            ui,
+            idle_exit_min,
+            print_url,
+        } => run_hub(*port, ui.clone(), *idle_exit_min, *print_url),
         Cmd::Mcp => mcp::serve(cli.project.clone()),
         Cmd::Worker { cmd } => match cmd {
-            WorkerCmd::Run { spec, device, out, slice, every } => worker::run_worker(spec, device, out.as_deref(), slice, *every),
+            WorkerCmd::Run {
+                spec,
+                device,
+                out,
+                slice,
+                every,
+            } => worker::run_worker(spec, device, out.as_deref(), slice, *every),
             WorkerCmd::Info => {
                 println!("{}", worker::hello().line());
                 Ok(())
@@ -313,7 +345,9 @@ fn real_main(cli: &Cli) -> Result<()> {
                 Some(i) if gamma_hub::discovery::alive(&i) => {
                     #[cfg(unix)]
                     {
-                        std::process::Command::new("kill").arg(i.pid.to_string()).status()?;
+                        std::process::Command::new("kill")
+                            .arg(i.pid.to_string())
+                            .status()?;
                     }
                     println!("stopped the hub (pid {})", i.pid);
                 }
@@ -333,7 +367,16 @@ fn project_command(cli: &Cli) -> Result<()> {
     match &cli.cmd {
         Cmd::Open { .. } => {
             let v = c.get(&p(""))?;
-            print(cli, &v, |v| format!("{} ({})\nhub: {}\nbrowser: {}/?token={}", v["name"].as_str().unwrap_or(""), id, c.info.url(), c.info.url(), c.info.token));
+            print(cli, &v, |v| {
+                format!(
+                    "{} ({})\nhub: {}\nbrowser: {}/?token={}",
+                    v["name"].as_str().unwrap_or(""),
+                    id,
+                    c.info.url(),
+                    c.info.url(),
+                    c.info.token
+                )
+            });
         }
         Cmd::Info => {
             let v = c.get(&p(""))?;
@@ -341,24 +384,63 @@ fn project_command(cli: &Cli) -> Result<()> {
             let s = c.get(&p("/sims"))?;
             let all = json!({"project": v, "layout": l["layout"], "sims": s});
             print(cli, &all, |_| {
-                let mut o = format!("{}  {}\n", v["name"].as_str().unwrap_or(""), v["root"].as_str().unwrap_or(""));
+                let mut o = format!(
+                    "{}  {}\n",
+                    v["name"].as_str().unwrap_or(""),
+                    v["root"].as_str().unwrap_or("")
+                );
                 if let Some(lay) = l["layout"].as_object() {
-                    o += &format!("layout: cell {} with {} polygons on {} layers, {} ports\n", lay["top"].as_str().unwrap_or(""), lay["polygons"], lay["layers"].as_array().map(|a| a.len()).unwrap_or(0), lay["ports"].as_array().map(|a| a.len()).unwrap_or(0));
+                    o += &format!(
+                        "layout: cell {} with {} polygons on {} layers, {} ports\n",
+                        lay["top"].as_str().unwrap_or(""),
+                        lay["polygons"],
+                        lay["layers"].as_array().map(|a| a.len()).unwrap_or(0),
+                        lay["ports"].as_array().map(|a| a.len()).unwrap_or(0)
+                    );
                 } else {
                     o += "layout: not built\n";
                 }
                 for x in s.as_array().cloned().unwrap_or_default() {
-                    o += &format!("simulation {}: {}{}\n", x["name"].as_str().unwrap_or(""), x["spec"].as_str().unwrap_or(""), if x["built"] == true { "" } else { " (not built)" });
+                    o += &format!(
+                        "simulation {}: {}{}\n",
+                        x["name"].as_str().unwrap_or(""),
+                        x["spec"].as_str().unwrap_or(""),
+                        if x["built"] == true {
+                            ""
+                        } else {
+                            " (not built)"
+                        }
+                    );
                 }
                 o.trim_end().to_string()
             });
         }
         Cmd::Build { target } => {
             let v = c.post(&p("/build"), json!({"target": target}))?;
-            print(cli, &v, |v| v.as_array().map(|a| a.iter().map(|x| format!("{}: {} in {:.1} s", x["target"].as_str().unwrap_or(""), if x["ok"] == true { "ok" } else { "failed" }, x["seconds"].as_f64().unwrap_or(0.0))).collect::<Vec<_>>().join("\n")).unwrap_or_default());
+            print(cli, &v, |v| {
+                v.as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|x| {
+                                format!(
+                                    "{}: {} in {:.1} s",
+                                    x["target"].as_str().unwrap_or(""),
+                                    if x["ok"] == true { "ok" } else { "failed" },
+                                    x["seconds"].as_f64().unwrap_or(0.0)
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default()
+            });
         }
         Cmd::Setup { sim, preview } => {
-            let v = c.get(&p(&format!("/sims/{}/setup?preview={}", enc(sim), *preview as u8)))?;
+            let v = c.get(&p(&format!(
+                "/sims/{}/setup?preview={}",
+                enc(sim),
+                *preview as u8
+            )))?;
             print(cli, &v, |v| {
                 let g = &v["grid"];
                 let mut o = format!(
@@ -373,22 +455,61 @@ fn project_command(cli: &Cli) -> Result<()> {
                     g["memory_bytes"].as_f64().unwrap_or(0.0) / 1e9
                 );
                 for e in v["estimates"].as_array().cloned().unwrap_or_default() {
-                    o += &format!("  {:<10} {:<36} ~{}\n", e["device"].as_str().unwrap_or(""), e["name"].as_str().unwrap_or(""), fmt_s(e["seconds"].as_f64().unwrap_or(0.0)));
+                    o += &format!(
+                        "  {:<10} {:<36} ~{}\n",
+                        e["device"].as_str().unwrap_or(""),
+                        e["name"].as_str().unwrap_or(""),
+                        fmt_s(e["seconds"].as_f64().unwrap_or(0.0))
+                    );
                 }
-                for ob in v["objects"].as_array().cloned().unwrap_or_default().iter().filter(|o| o["kind"] != "structure") {
-                    o += &format!("  {} {} ({})\n", ob["kind"].as_str().unwrap_or(""), ob["name"].as_str().unwrap_or(""), ob["type"].as_str().unwrap_or(""));
+                for ob in v["objects"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .filter(|o| o["kind"] != "structure")
+                {
+                    o += &format!(
+                        "  {} {} ({})\n",
+                        ob["kind"].as_str().unwrap_or(""),
+                        ob["name"].as_str().unwrap_or(""),
+                        ob["type"].as_str().unwrap_or("")
+                    );
                 }
                 o.trim_end().to_string()
             });
         }
-        Cmd::Run { sim, device, host, preview, detach } => {
-            let job = c.post(&p(&format!("/sims/{}/run", enc(sim))), json!({"device": device, "host": host, "preview": preview}))?;
+        Cmd::Run {
+            sim,
+            device,
+            host,
+            preview,
+            detach,
+        } => {
+            let job = c.post(
+                &p(&format!("/sims/{}/run", enc(sim))),
+                json!({"device": device, "host": host, "preview": preview}),
+            )?;
             let jid = job["id"].as_str().unwrap_or("").to_string();
             if *detach {
-                print(cli, &job, |j| format!("queued job {} ({} on {})", j["id"].as_str().unwrap_or(""), j["sim"].as_str().unwrap_or(""), j["host"].as_str().unwrap_or("this machine")));
+                print(cli, &job, |j| {
+                    format!(
+                        "queued job {} ({} on {})",
+                        j["id"].as_str().unwrap_or(""),
+                        j["sim"].as_str().unwrap_or(""),
+                        j["host"].as_str().unwrap_or("this machine")
+                    )
+                });
                 return Ok(());
             }
-            eprintln!("job {jid}: {sim} on {}{}", job["host"].as_str().map(|h| format!("{h} ")).unwrap_or_default(), job["device"].as_str().unwrap_or(""));
+            eprintln!(
+                "job {jid}: {sim} on {}{}",
+                job["host"]
+                    .as_str()
+                    .map(|h| format!("{h} "))
+                    .unwrap_or_default(),
+                job["device"].as_str().unwrap_or("")
+            );
             let mut last = String::new();
             let j = c.wait_job(&jid, None, |j| {
                 let pr = &j["progress"];
@@ -399,8 +520,14 @@ fn project_command(cli: &Cli) -> Result<()> {
                         "  step {}/{}  decay {}  {} Mcells/s",
                         pr["step"],
                         pr["steps"],
-                        pr["decay"].as_f64().map(|d| format!("{d:.1e}")).unwrap_or("-".into()),
-                        pr["mcells_per_s"].as_f64().map(|r| format!("{r:.0}")).unwrap_or("-".into())
+                        pr["decay"]
+                            .as_f64()
+                            .map(|d| format!("{d:.1e}"))
+                            .unwrap_or("-".into()),
+                        pr["mcells_per_s"]
+                            .as_f64()
+                            .map(|r| format!("{r:.0}"))
+                            .unwrap_or("-".into())
                     )
                 };
                 if line != last {
@@ -409,7 +536,11 @@ fn project_command(cli: &Cli) -> Result<()> {
                 }
             })?;
             print(cli, &j, |j| match j["status"].as_str() {
-                Some("done") => format!("done: results/{}/{}", j["sim"].as_str().unwrap_or(""), j["run_id"].as_str().unwrap_or("")),
+                Some("done") => format!(
+                    "done: results/{}/{}",
+                    j["sim"].as_str().unwrap_or(""),
+                    j["run_id"].as_str().unwrap_or("")
+                ),
                 s => format!("{}: {}", s.unwrap_or(""), j["error"].as_str().unwrap_or("")),
             });
             if j["status"] != "done" {
@@ -417,18 +548,54 @@ fn project_command(cli: &Cli) -> Result<()> {
             }
         }
         Cmd::Jobs { id, cancel } => match id {
-            Some(i) if *cancel => print(cli, &c.post(&format!("/api/jobs/{}/cancel", enc(i)), json!({}))?, |j| format!("{}: {}", j["id"].as_str().unwrap_or(""), j["status"].as_str().unwrap_or(""))),
-            Some(i) => print(cli, &c.get(&format!("/api/jobs/{}", enc(i)))?, |j| serde_json::to_string_pretty(j).unwrap_or_default()),
+            Some(i) if *cancel => print(
+                cli,
+                &c.post(&format!("/api/jobs/{}/cancel", enc(i)), json!({}))?,
+                |j| {
+                    format!(
+                        "{}: {}",
+                        j["id"].as_str().unwrap_or(""),
+                        j["status"].as_str().unwrap_or("")
+                    )
+                },
+            ),
+            Some(i) => print(cli, &c.get(&format!("/api/jobs/{}", enc(i)))?, |j| {
+                serde_json::to_string_pretty(j).unwrap_or_default()
+            }),
             None => print(cli, &c.get("/api/jobs")?, |v| {
-                v.as_array().map(|a| a.iter().map(|j| format!("{}  {:<10} {:<16} {} {}", j["id"].as_str().unwrap_or(""), j["status"].as_str().unwrap_or(""), j["sim"].as_str().unwrap_or(""), j["host"].as_str().unwrap_or("local"), j["device"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")).unwrap_or_default()
+                v.as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|j| {
+                                format!(
+                                    "{}  {:<10} {:<16} {} {}",
+                                    j["id"].as_str().unwrap_or(""),
+                                    j["status"].as_str().unwrap_or(""),
+                                    j["sim"].as_str().unwrap_or(""),
+                                    j["host"].as_str().unwrap_or("local"),
+                                    j["device"].as_str().unwrap_or("")
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default()
             }),
         },
-        Cmd::Results { sim, run, what, monitor } => {
+        Cmd::Results {
+            sim,
+            run,
+            what,
+            monitor,
+        } => {
             let run = match run {
                 Some(r) => r.clone(),
                 None => {
                     let runs = c.get(&p(&format!("/runs?sim={}", enc(sim))))?;
-                    runs.as_array().and_then(|a| a.iter().find(|r| r["has_results"] == true)).and_then(|r| r["id"].as_str().map(|s| s.to_string())).context("no finished run")?
+                    runs.as_array()
+                        .and_then(|a| a.iter().find(|r| r["has_results"] == true))
+                        .and_then(|r| r["id"].as_str().map(|s| s.to_string()))
+                        .context("no finished run")?
                 }
             };
             let mut url = p(&format!("/runs/{}/{}/{}", enc(sim), enc(&run), enc(what)));
@@ -436,7 +603,9 @@ fn project_command(cli: &Cli) -> Result<()> {
                 url += &format!("?monitor={}", enc(m));
             }
             let v = c.get(&url)?;
-            print(cli, &v, |v| serde_json::to_string_pretty(v).unwrap_or_default());
+            print(cli, &v, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            });
         }
         Cmd::Check => {
             let v = c.get(&p("/check"))?;
@@ -445,13 +614,25 @@ fn project_command(cli: &Cli) -> Result<()> {
                 if f.is_empty() {
                     return "no findings".into();
                 }
-                f.iter().map(|x| format!("{:<8} {:<22} {}", x["severity"].as_str().unwrap_or(""), x["rule"].as_str().unwrap_or(""), x["message"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")
+                f.iter()
+                    .map(|x| {
+                        format!(
+                            "{:<8} {:<22} {}",
+                            x["severity"].as_str().unwrap_or(""),
+                            x["rule"].as_str().unwrap_or(""),
+                            x["message"].as_str().unwrap_or("")
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
             });
         }
         Cmd::View { view, out, params } => {
             let mut q = format!("view={}", enc(view));
             for kv in params {
-                let (k, v) = kv.split_once('=').with_context(|| format!("parameter '{kv}' should be key=value"))?;
+                let (k, v) = kv
+                    .split_once('=')
+                    .with_context(|| format!("parameter '{kv}' should be key=value"))?;
                 q += &format!("&{}={}", enc(k), enc(v));
             }
             let png = c.get_bytes(&p(&format!("/render?{q}")))?;
@@ -461,10 +642,38 @@ fn project_command(cli: &Cli) -> Result<()> {
         Cmd::Checkpoint { message, list } => {
             if *list {
                 let v = c.get(&p("/checkpoints"))?;
-                print(cli, &v, |v| v["checkpoints"].as_array().map(|a| a.iter().map(|x| format!("{:>3}  {}  {:<20} {}", x["n"], &x["commit"].as_str().unwrap_or("")[..8.min(x["commit"].as_str().unwrap_or("").len())], x["actor"].as_str().unwrap_or(""), x["message"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")).unwrap_or_default());
+                print(cli, &v, |v| {
+                    v["checkpoints"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|x| {
+                                    format!(
+                                        "{:>3}  {}  {:<20} {}",
+                                        x["n"],
+                                        &x["commit"].as_str().unwrap_or("")
+                                            [..8.min(x["commit"].as_str().unwrap_or("").len())],
+                                        x["actor"].as_str().unwrap_or(""),
+                                        x["message"].as_str().unwrap_or("")
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        })
+                        .unwrap_or_default()
+                });
             } else {
-                let v = c.post(&p("/checkpoints"), json!({"message": message.clone().unwrap_or_else(|| "Checkpoint".into())}))?;
-                print(cli, &v, |v| if v.is_null() { "nothing changed since the last checkpoint".into() } else { format!("checkpoint {}", v["n"]) });
+                let v = c.post(
+                    &p("/checkpoints"),
+                    json!({"message": message.clone().unwrap_or_else(|| "Checkpoint".into())}),
+                )?;
+                print(cli, &v, |v| {
+                    if v.is_null() {
+                        "nothing changed since the last checkpoint".into()
+                    } else {
+                        format!("checkpoint {}", v["n"])
+                    }
+                });
             }
         }
         Cmd::Diff { a, b } => {
@@ -473,14 +682,58 @@ fn project_command(cli: &Cli) -> Result<()> {
                 url += &format!("&b={b}");
             }
             let v = c.get(&url)?;
-            print(cli, &v, |v| serde_json::to_string_pretty(v).unwrap_or_default());
+            print(cli, &v, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            });
         }
         Cmd::Remote { cmd } => match cmd {
-            RemoteCmd::Add { name, ssh, launcher, program } => print(cli, &c.post("/api/remotes", json!({"name": name, "ssh": ssh, "launcher": launcher, "program": program}))?, |v| format!("added remote {}", v["name"].as_str().unwrap_or(""))),
-            RemoteCmd::List => print(cli, &c.get("/api/remotes")?, |v| v.as_array().map(|a| a.iter().map(|r| format!("{:<16} {}", r["name"].as_str().unwrap_or(""), r["ssh"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n")).unwrap_or_default()),
-            RemoteCmd::Remove { name } => print(cli, &c.delete(&format!("/api/remotes/{}", enc(name)))?, |_| format!("removed {name}")),
-            RemoteCmd::Test { name } => print(cli, &c.post(&format!("/api/remotes/{}/test", enc(name)), json!({}))?, |v| serde_json::to_string_pretty(v).unwrap_or_default()),
-            RemoteCmd::Install { name, binary } => print(cli, &c.post(&format!("/api/remotes/{}/install", enc(name)), json!({"binary": binary.canonicalize()?}))?, |v| serde_json::to_string_pretty(v).unwrap_or_default()),
+            RemoteCmd::Add {
+                name,
+                ssh,
+                launcher,
+                program,
+            } => print(
+                cli,
+                &c.post(
+                    "/api/remotes",
+                    json!({"name": name, "ssh": ssh, "launcher": launcher, "program": program}),
+                )?,
+                |v| format!("added remote {}", v["name"].as_str().unwrap_or("")),
+            ),
+            RemoteCmd::List => print(cli, &c.get("/api/remotes")?, |v| {
+                v.as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|r| {
+                                format!(
+                                    "{:<16} {}",
+                                    r["name"].as_str().unwrap_or(""),
+                                    r["ssh"].as_str().unwrap_or("")
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default()
+            }),
+            RemoteCmd::Remove { name } => print(
+                cli,
+                &c.delete(&format!("/api/remotes/{}", enc(name)))?,
+                |_| format!("removed {name}"),
+            ),
+            RemoteCmd::Test { name } => print(
+                cli,
+                &c.post(&format!("/api/remotes/{}/test", enc(name)), json!({}))?,
+                |v| serde_json::to_string_pretty(v).unwrap_or_default(),
+            ),
+            RemoteCmd::Install { name, binary } => print(
+                cli,
+                &c.post(
+                    &format!("/api/remotes/{}/install", enc(name)),
+                    json!({"binary": binary.canonicalize()?}),
+                )?,
+                |v| serde_json::to_string_pretty(v).unwrap_or_default(),
+            ),
         },
         Cmd::Agent { cmd } => match cmd {
             AgentCmd::Setup { provider } => agent_setup(&root, provider)?,
@@ -499,13 +752,24 @@ fn agent_setup(root: &Path, provider: &str) -> Result<()> {
     match provider {
         "claude" => {
             let path = root.join(".mcp.json");
-            let mut v: Value = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(json!({"mcpServers": {}}));
+            let mut v: Value = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok())
+                .unwrap_or(json!({"mcpServers": {}}));
             v["mcpServers"]["gamma"] = json!({"command": exe, "args": ["mcp"]});
             gamma_core::fsutil::atomic_write(&path, serde_json::to_string_pretty(&v)?.as_bytes())?;
-            println!("wrote {} — start `claude` in {} and the gamma tools are available (approve the server when asked)", path.display(), root.display());
+            println!(
+                "wrote {} — start `claude` in {} and the gamma tools are available (approve the server when asked)",
+                path.display(),
+                root.display()
+            );
         }
         "codex" => {
-            println!("add to ~/.codex/config.toml:\n\n[mcp_servers.gamma]\ncommand = \"{}\"\nargs = [\"mcp\"]\n\nthen run `codex` in {}", exe.display(), root.display());
+            println!(
+                "add to ~/.codex/config.toml:\n\n[mcp_servers.gamma]\ncommand = \"{}\"\nargs = [\"mcp\"]\n\nthen run `codex` in {}",
+                exe.display(),
+                root.display()
+            );
         }
         other => bail!("unknown agent '{other}': claude or codex"),
     }

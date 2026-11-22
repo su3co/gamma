@@ -2,18 +2,21 @@
 
 use crate::devices::DeviceInfo;
 use anyhow::{Context, Result};
+use lightsim_core::Simulation;
 use lightsim_core::geometry::Shape;
 use lightsim_core::grid::{Component, Grid, MeshSpec};
 use lightsim_core::raster::{RasterOptions, rasterize_component, resolve};
-use lightsim_core::Simulation;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::path::Path;
 
 pub fn load(path: &Path) -> Result<Simulation> {
-    let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let sim = Simulation::from_json(&text).with_context(|| format!("{} is not a lightsim simulation file", path.display()))?;
-    sim.validate().with_context(|| format!("{} does not describe a valid simulation", path.display()))?;
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let sim = Simulation::from_json(&text)
+        .with_context(|| format!("{} is not a lightsim simulation file", path.display()))?;
+    sim.validate()
+        .with_context(|| format!("{} does not describe a valid simulation", path.display()))?;
     Ok(sim)
 }
 
@@ -27,7 +30,13 @@ pub fn preview(sim: &Simulation, mesh_scale: f64, run_time_scale: f64) -> Simula
                 *d *= k;
             }
         }
-        MeshSpec::Auto { steps_per_wavelength, min_step, max_step, overrides, .. } => {
+        MeshSpec::Auto {
+            steps_per_wavelength,
+            min_step,
+            max_step,
+            overrides,
+            ..
+        } => {
             *steps_per_wavelength /= k;
             if let Some(m) = min_step {
                 *m *= k;
@@ -188,9 +197,25 @@ pub fn memory_estimate(sim: &Simulation, grid: &Grid) -> u64 {
     use lightsim_core::monitors::Monitor as M;
     for m in &sim.monitors {
         let (c, nf, comps) = match m {
-            M::DftField { min, max, freqs, components, .. } => (cells_in(min, max), freqs.len(), components.len()),
-            M::Flux { min, max, freqs, .. } | M::Mode { min, max, freqs, .. } => (cells_in(min, max), freqs.len(), 4),
-            M::FluxBox { min, max, freqs, .. } | M::FarField { min, max, freqs, .. } => {
+            M::DftField {
+                min,
+                max,
+                freqs,
+                components,
+                ..
+            } => (cells_in(min, max), freqs.len(), components.len()),
+            M::Flux {
+                min, max, freqs, ..
+            }
+            | M::Mode {
+                min, max, freqs, ..
+            } => (cells_in(min, max), freqs.len(), 4),
+            M::FluxBox {
+                min, max, freqs, ..
+            }
+            | M::FarField {
+                min, max, freqs, ..
+            } => {
                 let mut area = 0.0;
                 for a in 0..3 {
                     let mut hi = *max;
@@ -209,19 +234,29 @@ pub fn memory_estimate(sim: &Simulation, grid: &Grid) -> u64 {
 fn bbox3(v: &Value, region: &[[f64; 3]; 2]) -> Option<([f64; 3], [f64; 3])> {
     let arr = |k: &str| -> Option<[f64; 3]> {
         let a = v.get(k)?.as_array()?;
-        Some([a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?])
+        Some([
+            a.first()?.as_f64()?,
+            a.get(1)?.as_f64()?,
+            a.get(2)?.as_f64()?,
+        ])
     };
     if let (Some(mn), Some(mx)) = (arr("min"), arr("max")) {
         let mut mn = mn;
         let mut mx = mx;
-        if let (Some(ax), Some(pos)) = (v.get("axis").and_then(|a| a.as_u64()), v.get("position").and_then(|p| p.as_f64())) {
+        if let (Some(ax), Some(pos)) = (
+            v.get("axis").and_then(|a| a.as_u64()),
+            v.get("position").and_then(|p| p.as_f64()),
+        ) {
             mn[ax as usize] = pos;
             mx[ax as usize] = pos;
         }
         return Some((mn, mx));
     }
     if let Some(p) = arr("position").or_else(|| arr("center")) {
-        if let (Some(ax), Some(pos)) = (v.get("axis").and_then(|a| a.as_u64()), v.get("position").and_then(|p| p.as_f64())) {
+        if let (Some(ax), Some(pos)) = (
+            v.get("axis").and_then(|a| a.as_u64()),
+            v.get("position").and_then(|p| p.as_f64()),
+        ) {
             // a plane across the region
             let mut mn = region[0];
             let mut mx = region[1];
@@ -231,7 +266,10 @@ fn bbox3(v: &Value, region: &[[f64; 3]; 2]) -> Option<([f64; 3], [f64; 3])> {
         }
         return Some((p, p));
     }
-    if let (Some(ax), Some(pos)) = (v.get("axis").and_then(|a| a.as_u64()), v.get("position").and_then(|p| p.as_f64())) {
+    if let (Some(ax), Some(pos)) = (
+        v.get("axis").and_then(|a| a.as_u64()),
+        v.get("position").and_then(|p| p.as_f64()),
+    ) {
         let mut mn = region[0];
         let mut mx = region[1];
         mn[ax as usize] = pos;
@@ -248,7 +286,8 @@ fn light(v: &Value) -> Value {
             let mut o = serde_json::Map::new();
             for (k, x) in m {
                 match k.as_str() {
-                    "profile" | "modes" | "eps" | "eps_axes" | "mu" | "e_re" | "e_im" | "h_re" | "h_im" | "director" | "values" | "times" => {
+                    "profile" | "modes" | "eps" | "eps_axes" | "mu" | "e_re" | "e_im" | "h_re"
+                    | "h_im" | "director" | "values" | "times" => {
                         o.insert(k.clone(), Value::String("…".into()));
                     }
                     "vertices" => {
@@ -257,7 +296,10 @@ fn light(v: &Value) -> Value {
                     "freqs" | "theta" | "phi" => {
                         let a = x.as_array().cloned().unwrap_or_default();
                         if a.len() > 6 {
-                            o.insert(k.clone(), json!({"count": a.len(), "first": a.first(), "last": a.last()}));
+                            o.insert(
+                                k.clone(),
+                                json!({"count": a.len(), "first": a.first(), "last": a.last()}),
+                            );
                         } else {
                             o.insert(k.clone(), x.clone());
                         }
@@ -280,7 +322,11 @@ fn wavelengths(sim: &Simulation) -> Option<[f64; 2]> {
     let mut fs: Vec<f64> = vec![];
     for m in &sim.monitors {
         match m {
-            M::DftField { freqs, .. } | M::Flux { freqs, .. } | M::FluxBox { freqs, .. } | M::Mode { freqs, .. } | M::FarField { freqs, .. } => fs.extend(freqs),
+            M::DftField { freqs, .. }
+            | M::Flux { freqs, .. }
+            | M::FluxBox { freqs, .. }
+            | M::Mode { freqs, .. }
+            | M::FarField { freqs, .. } => fs.extend(freqs),
             _ => {}
         }
     }
@@ -315,7 +361,11 @@ pub fn summarize(name: &str, sim: &Simulation, devices: &[DeviceInfo]) -> Result
             reference: format!("structure:{name}/{i}"),
             kind: "structure",
             ty,
-            name: if st.name.is_empty() { format!("structure {i}") } else { st.name.clone() },
+            name: if st.name.is_empty() {
+                format!("structure {i}")
+            } else {
+                st.name.clone()
+            },
             min: clamp3(mn, &region),
             max: clamp3(mx, &region),
             medium: Some(st.medium.clone()),
@@ -329,7 +379,11 @@ pub fn summarize(name: &str, sim: &Simulation, devices: &[DeviceInfo]) -> Result
     for (i, s) in sim.sources.iter().enumerate() {
         let sv = &v["sources"][i];
         let (mn, mx) = bbox3(sv, &region).unwrap_or((region[0], region[1]));
-        let nm = if s.name().is_empty() { format!("source{i}") } else { s.name().to_string() };
+        let nm = if s.name().is_empty() {
+            format!("source{i}")
+        } else {
+            s.name().to_string()
+        };
         objects.push(Object {
             reference: format!("source:{name}/{nm}"),
             kind: "source",
@@ -370,7 +424,11 @@ pub fn summarize(name: &str, sim: &Simulation, devices: &[DeviceInfo]) -> Result
         .collect();
     let estimates = estimate(&gi, devices);
     Ok(Summary {
-        name: if sim.name.is_empty() { name.to_string() } else { sim.name.clone() },
+        name: if sim.name.is_empty() {
+            name.to_string()
+        } else {
+            sim.name.clone()
+        },
         region,
         grid: gi,
         background: sim.background.clone(),
@@ -384,7 +442,11 @@ pub fn summarize(name: &str, sim: &Simulation, devices: &[DeviceInfo]) -> Result
 }
 
 fn clamp3(p: [f64; 3], r: &[[f64; 3]; 2]) -> [f64; 3] {
-    [p[0].clamp(r[0][0], r[1][0]), p[1].clamp(r[0][1], r[1][1]), p[2].clamp(r[0][2], r[1][2])]
+    [
+        p[0].clamp(r[0][0], r[1][0]),
+        p[1].clamp(r[0][1], r[1][1]),
+        p[2].clamp(r[0][2], r[1][2]),
+    ]
 }
 
 pub fn estimate(g: &GridInfo, devices: &[DeviceInfo]) -> Vec<Estimate> {
@@ -431,11 +493,18 @@ pub fn eps_slice(sim: &Simulation, axis: usize, coord: f64, max_dim: usize) -> R
     let grid = sim.build_grid()?;
     let n = grid.n();
     let k = grid.cell_index(axis, coord).min(n[axis] - 1);
-    let mut edges: [Vec<f64>; 3] = [grid.edges(0).to_vec(), grid.edges(1).to_vec(), grid.edges(2).to_vec()];
+    let mut edges: [Vec<f64>; 3] = [
+        grid.edges(0).to_vec(),
+        grid.edges(1).to_vec(),
+        grid.edges(2).to_vec(),
+    ];
     edges[axis] = vec![grid.edges(axis)[k], grid.edges(axis)[k + 1]];
     let sub = Grid::from_edges(edges[0].clone(), edges[1].clone(), edges[2].clone());
     let media = sim.media_table()?;
-    let background = media.iter().position(|m| m.name == sim.background).context("background medium missing")?;
+    let background = media
+        .iter()
+        .position(|m| m.name == sim.background)
+        .context("background medium missing")?;
     let structures = resolve(&sim.structures, &media)?;
     let mut ropts = RasterOptions::default();
     ropts.smoothing = sim.subpixel;

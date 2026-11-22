@@ -24,7 +24,10 @@ pub fn runtime_dir() -> PathBuf {
     if let Ok(d) = std::env::var("GAMMA_RUNTIME_DIR") {
         return PathBuf::from(d);
     }
-    dirs::runtime_dir().or_else(dirs::cache_dir).unwrap_or_else(std::env::temp_dir).join("gamma")
+    dirs::runtime_dir()
+        .or_else(dirs::cache_dir)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("gamma")
 }
 
 pub fn hub_file() -> PathBuf {
@@ -57,9 +60,17 @@ pub fn remove_hub_info(pid: u32) {
 /// Is a hub answering at `info`? (A plain TCP probe plus a version request.)
 pub fn alive(info: &HubInfo) -> bool {
     use std::io::{Read, Write};
-    let Ok(mut s) = std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], info.port).into(), Duration::from_millis(400)) else { return false };
+    let Ok(mut s) = std::net::TcpStream::connect_timeout(
+        &([127, 0, 0, 1], info.port).into(),
+        Duration::from_millis(400),
+    ) else {
+        return false;
+    };
     let _ = s.set_read_timeout(Some(Duration::from_millis(1500)));
-    let req = format!("GET /api/hub HTTP/1.0\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\n\r\n", info.token);
+    let req = format!(
+        "GET /api/hub HTTP/1.0\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\n\r\n",
+        info.token
+    );
     if s.write_all(req.as_bytes()).is_err() {
         return false;
     }
@@ -83,13 +94,18 @@ pub fn connect_or_spawn_with(program: &std::path::Path, args: &[&str]) -> Result
         }
     }
     let mut cmd = std::process::Command::new(program);
-    cmd.arg("hub").args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    cmd.arg("hub")
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         cmd.process_group(0);
     }
-    cmd.spawn().with_context(|| format!("starting the hub ({})", program.display()))?;
+    cmd.spawn()
+        .with_context(|| format!("starting the hub ({})", program.display()))?;
     for _ in 0..100 {
         std::thread::sleep(Duration::from_millis(50));
         if let Some(i) = read_hub_info() {

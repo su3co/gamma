@@ -28,13 +28,33 @@ pub struct Classified {
 
 pub fn classify(p: &gamma_core::Project, paths: &BTreeSet<PathBuf>) -> Classified {
     let mut c = Classified::default();
-    let rel = |x: &Path| x.strip_prefix(&p.root).unwrap_or(x).to_string_lossy().replace('\\', "/");
+    let rel = |x: &Path| {
+        x.strip_prefix(&p.root)
+            .unwrap_or(x)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
     let layout = p.manifest.layout.clone().unwrap_or_default();
-    let specs: Vec<String> = p.manifest.simulations.iter().map(|s| s.spec.clone()).collect();
-    let sim_gens: Vec<String> = p.manifest.simulations.iter().filter_map(|s| s.generator.clone()).collect();
+    let specs: Vec<String> = p
+        .manifest
+        .simulations
+        .iter()
+        .map(|s| s.spec.clone())
+        .collect();
+    let sim_gens: Vec<String> = p
+        .manifest
+        .simulations
+        .iter()
+        .filter_map(|s| s.generator.clone())
+        .collect();
     for path in paths {
         let r = rel(path);
-        if r.starts_with(".git/") || r.starts_with(".gamma/local/") || r.contains("__pycache__") || r.ends_with(".tmp") || r.contains("/.") && r.contains(".tmp-") {
+        if r.starts_with(".git/")
+            || r.starts_with(".gamma/local/")
+            || r.contains("__pycache__")
+            || r.ends_with(".tmp")
+            || r.contains("/.") && r.contains(".tmp-")
+        {
             continue;
         }
         c.files.push(r.clone());
@@ -101,14 +121,19 @@ async fn handle(_hub: &Hub, ps: &Arc<ProjectState>, set: &BTreeSet<PathBuf>) {
     if c.files.is_empty() {
         return;
     }
-    ps.log.push("hub", "files.changed", json!({"files": c.files}));
+    ps.log
+        .push("hub", "files.changed", json!({"files": c.files}));
     if c.manifest {
         match ps.reload_manifest() {
             Ok(()) => {
                 ps.log.push("hub", "project.changed", json!({}));
             }
             Err(e) => {
-                ps.log.push("hub", "error", json!({"message": format!("{e:#}"), "file": "gamma.toml"}));
+                ps.log.push(
+                    "hub",
+                    "error",
+                    json!({"message": format!("{e:#}"), "file": "gamma.toml"}),
+                );
             }
         }
     }
@@ -134,7 +159,13 @@ async fn handle(_hub: &Hub, ps: &Arc<ProjectState>, set: &BTreeSet<PathBuf>) {
             let r = if target == "all" {
                 ps2.build("all", "hub").await
             } else {
-                let names: Vec<String> = ps2.snapshot().manifest.simulations.iter().map(|s| s.name.clone()).collect();
+                let names: Vec<String> = ps2
+                    .snapshot()
+                    .manifest
+                    .simulations
+                    .iter()
+                    .map(|s| s.name.clone())
+                    .collect();
                 let mut all = vec![];
                 for n in names {
                     match ps2.build(&format!("sim:{n}"), "hub").await {
@@ -147,7 +178,11 @@ async fn handle(_hub: &Hub, ps: &Arc<ProjectState>, set: &BTreeSet<PathBuf>) {
                 Ok(all)
             };
             if let Err(e) = r {
-                ps2.log.push("hub", "error", json!({"message": format!("automatic build failed: {e:#}")}));
+                ps2.log.push(
+                    "hub",
+                    "error",
+                    json!({"message": format!("automatic build failed: {e:#}")}),
+                );
             }
         });
     }
@@ -172,8 +207,20 @@ generator = "sims/s.py"
 "#,
         )
         .unwrap();
-        let p = gamma_core::Project { root: PathBuf::from("/p"), manifest: m };
-        let set: BTreeSet<PathBuf> = ["/p/layout/a.py", "/p/build/a.gds", "/p/.git/index", "/p/sims/s.py", "/p/results/s/1/run.json"].iter().map(PathBuf::from).collect();
+        let p = gamma_core::Project {
+            root: PathBuf::from("/p"),
+            manifest: m,
+        };
+        let set: BTreeSet<PathBuf> = [
+            "/p/layout/a.py",
+            "/p/build/a.gds",
+            "/p/.git/index",
+            "/p/sims/s.py",
+            "/p/results/s/1/run.json",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
         let c = classify(&p, &set);
         assert!(c.layout_source && c.layout_output && c.sim_source && c.results && !c.manifest);
         assert_eq!(c.files.len(), 4);

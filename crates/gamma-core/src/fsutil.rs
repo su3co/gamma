@@ -9,7 +9,10 @@ use std::path::Path;
 
 /// Write `data` to `path` atomically (temporary file, fsync, rename, fsync of the folder).
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
-    let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     fs::create_dir_all(dir).with_context(|| format!("creating folder {}", dir.display()))?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
     let tmp = dir.join(format!(".{name}.tmp-{}", std::process::id()));
@@ -31,7 +34,11 @@ pub fn append_line(path: &Path, line: &str) -> Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    let mut f = OpenOptions::new().create(true).append(true).open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut f = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("opening {}", path.display()))?;
     let mut s = String::with_capacity(line.len() + 1);
     s.push_str(line);
     s.push('\n');
@@ -58,7 +65,11 @@ pub fn read_lines_repair(path: &Path) -> Result<Vec<String>> {
         f.sync_all()?;
     }
     let text = String::from_utf8_lossy(&data[..complete]);
-    Ok(text.lines().filter(|l| !l.trim().is_empty()).map(|l| l.to_string()).collect())
+    Ok(text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.to_string())
+        .collect())
 }
 
 /// SHA-256 of a file's bytes, hex encoded.

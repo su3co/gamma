@@ -1,4 +1,5 @@
 /target
+/target-linux
 node_modules/
 /app/ui/dist/
 /app/src-tauri/gen/
@@ -13,3 +14,5 @@ __pycache__/
 /examples/*/build/
 /examples/*/results/
 /examples/*/.gamma/local/
+*.egg-info/
+!/tests/fixtures/*/build/

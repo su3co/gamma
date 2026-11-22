@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Format, lint, unit and integration tests (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries for the desktop shell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Interface (the shell embeds it)
+        working-directory: app/ui
+        run: npm ci && npm run build
+      - run: cargo fmt --all --check
+      - run: cargo clippy --release --workspace --all-targets -- -D warnings
+      - run: cargo test --release --workspace
+
+  ui:
+    name: Interface type check and smoke test (headless Chromium)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      - uses: Swatinem/rust-cache@v2
+      - working-directory: app/ui
+        run: npm ci && npm run typecheck && npm run build
+      - run: cargo build --release -p gamma-cli
+      - name: Chromium
+        working-directory: app/ui
+        run: npx playwright-core install --with-deps chromium
+      - run: node tests/ui/smoke.mjs target/ui-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-smoke-screenshots
+          path: target/ui-smoke/
+          retention-days: 14
+
+  python:
+    name: Python helper
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ./python && python -c "import gamma_pic; print(gamma_pic.mesh_scale())"
+      - run: python -m py_compile examples/*/layout/*.py examples/*/sims/*.py packaging/make-feed.py
+
+  macos:
+    name: macOS build and tests (Apple silicon)
+    # macOS minutes are expensive on private repositories: main and manual runs only
+    if: github.event_name != 'pull_request'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --release --workspace
+      - name: Unsigned app bundle
+        run: scripts/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gamma-macos-arm64-unsigned
+          path: target/release/bundle/dmg/*.dmg
+          retention-days: 7

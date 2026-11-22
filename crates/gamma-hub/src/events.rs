@@ -22,7 +22,9 @@ pub struct Event {
 }
 
 pub fn now() -> String {
-    time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).unwrap_or_default()
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default()
 }
 
 pub struct EventLog {
@@ -34,20 +36,38 @@ pub struct EventLog {
 impl EventLog {
     pub fn open(path: PathBuf) -> Result<EventLog> {
         let lines = read_lines_repair(&path)?;
-        let events: Vec<Event> = lines.iter().filter_map(|l| serde_json::from_str(l).ok()).collect();
+        let events: Vec<Event> = lines
+            .iter()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
         let (tx, _) = broadcast::channel(4096);
-        Ok(EventLog { path, events: Mutex::new(events), tx })
+        Ok(EventLog {
+            path,
+            events: Mutex::new(events),
+            tx,
+        })
     }
 
     pub fn last_seq(&self) -> u64 {
-        self.events.lock().unwrap().last().map(|e| e.seq).unwrap_or(0)
+        self.events
+            .lock()
+            .unwrap()
+            .last()
+            .map(|e| e.seq)
+            .unwrap_or(0)
     }
 
     /// Append a logged event and broadcast it.
     pub fn push(&self, actor: &str, kind: &str, data: Value) -> Event {
         let mut ev = self.events.lock().unwrap();
         let seq = ev.last().map(|e| e.seq).unwrap_or(0) + 1;
-        let e = Event { seq, time: now(), actor: actor.into(), kind: kind.into(), data };
+        let e = Event {
+            seq,
+            time: now(),
+            actor: actor.into(),
+            kind: kind.into(),
+            data,
+        };
         if let Err(err) = append_line(&self.path, &serde_json::to_string(&e).unwrap_or_default()) {
             tracing::warn!("event log write failed: {err:#}");
         }
@@ -64,11 +84,25 @@ impl EventLog {
 
     /// Broadcast without logging.
     pub fn ephemeral(&self, actor: &str, kind: &str, data: Value) {
-        let _ = self.tx.send(Event { seq: 0, time: now(), actor: actor.into(), kind: kind.into(), data });
+        let _ = self.tx.send(Event {
+            seq: 0,
+            time: now(),
+            actor: actor.into(),
+            kind: kind.into(),
+            data,
+        });
     }
 
     pub fn since(&self, after: u64, kinds: Option<&[&str]>) -> Vec<Event> {
-        self.events.lock().unwrap().iter().filter(|e| e.seq > after && kinds.map(|k| k.contains(&e.kind.as_str())).unwrap_or(true)).cloned().collect()
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| {
+                e.seq > after && kinds.map(|k| k.contains(&e.kind.as_str())).unwrap_or(true)
+            })
+            .cloned()
+            .collect()
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
