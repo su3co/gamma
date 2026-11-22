@@ -54,6 +54,24 @@ export class View3D {
     store.on("layout", () => this.load());
     store.on("theme", () => this.schedule());
     store.on("hidden", () => this.load(true));
+    store.on("selection", () => this.schedule());
+  }
+
+  /** A wireframe box around the selected object (layout coordinates, z over the patterned layers). */
+  private selectionBox(): Float32Array | null {
+    const b = store.selection?.bbox;
+    if (!b || !store.layout) return null;
+    const zs = store.layout.layers.filter((l: any) => l.zmin !== null && l.zmin !== undefined);
+    const z0 = Math.min(0, ...zs.map((l: any) => l.zmin)) - 0.02, z1 = Math.max(0.22, ...zs.map((l: any) => l.zmax)) + 0.02;
+    const pad = 0.05;
+    const [x0, y0, x1, y1] = [b.min[0] - pad, b.min[1] - pad, b.max[0] + pad, b.max[1] + pad];
+    const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    const v: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const [a, d] = [c[i], c[(i + 1) % 4]];
+      v.push(a[0], a[1], z0, d[0], d[1], z0, a[0], a[1], z1, d[0], d[1], z1, a[0], a[1], z0, a[0], a[1], z1);
+    }
+    return new Float32Array(v);
   }
 
   reset() { const b = store.layout?.bbox; if (!b) return; this.cam = { az: -0.6, el: 0.75, dist: 1.4 * Math.max(b.max[0] - b.min[0], b.max[1] - b.min[1]), tx: 0, ty: 0 }; this.schedule(); }
@@ -125,6 +143,19 @@ export class View3D {
     g.uniform3f(g.getUniformLocation(this.prog, "light"), l[0], l[1], l[2]);
     const ucol = g.getUniformLocation(this.prog, "col");
     for (const m of this.meshes) { g.uniform4f(ucol, m.color[0], m.color[1], m.color[2], 1); g.bindVertexArray(m.vao); g.drawElements(g.TRIANGLES, m.n, g.UNSIGNED_INT, 0); }
+    const box = this.selectionBox();
+    if (box) {
+      const sel = rgb(css("--select"));
+      const vao = g.createVertexArray()!; g.bindVertexArray(vao);
+      const vb = g.createBuffer()!; g.bindBuffer(g.ARRAY_BUFFER, vb); g.bufferData(g.ARRAY_BUFFER, box, g.STREAM_DRAW);
+      g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 3, g.FLOAT, false, 0, 0);
+      g.disableVertexAttribArray(1); g.vertexAttrib3f(1, 0, 0, 1);
+      g.uniform4f(ucol, sel[0] / 0.885, sel[1] / 0.885, sel[2] / 0.885, 1); // undo the shading (normal +z)
+      g.disable(g.DEPTH_TEST);
+      g.drawArrays(g.LINES, 0, box.length / 3);
+      g.enable(g.DEPTH_TEST);
+      g.deleteBuffer(vb); g.deleteVertexArray(vao);
+    }
     g.bindVertexArray(null);
   }
 }
