@@ -88,13 +88,16 @@ pub fn check(
         for a in 0..3 {
             for (side, b) in sim.boundaries.axis(a).iter().enumerate() {
                 let layers = b.pml_layers();
-                if layers == 0 {
-                    continue;
-                }
-                let i = if side == 0 { 0 } else { n[a] - 1 };
-                let thick = layers as f64 * grid.cell_size(a, i);
-                if thick < 0.25 * c / fmax {
-                    out.push(Finding::new(Severity::Info, "sim.pml_thin", format!("simulation {name}: the absorbing layer on the {} {} side is {:.2} um, less than a quarter of a free-space wavelength", if side == 0 { "low" } else { "high" }, ["x", "y", "z"][a], thick * 1e6)).on(&obj));
+                // CPML absorbs by its number of graded layers; lightsim uses 12 by default
+                if layers > 0 && layers < 8 {
+                    out.push(
+                        Finding::new(
+                            Severity::Warning,
+                            "sim.pml_layers",
+                            format!("simulation {name}: only {layers} absorbing layers on the {} {} side; reflections grow below about 8 (lightsim's default is 12)", if side == 0 { "low" } else { "high" }, ["x", "y", "z"][a]),
+                        )
+                        .on(&obj),
+                    );
                 }
             }
         }
