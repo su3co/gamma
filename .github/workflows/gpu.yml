@@ -3,10 +3,10 @@ name: GPU tests
 # Runs on self-hosted runners on the owner's GPU machines, once they are
 # installed (labels: self-hosted, linux, gpu, and x64 or arm64). Until then
 # the same script is run by hand and the results recorded in docs/test-runs/.
+# Manual only: on a public repository, self-hosted runners must never run
+# workflows triggered by pull requests from forks.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 6 * * 1"
 
 permissions:
   contents: read

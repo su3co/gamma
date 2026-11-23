@@ -53,6 +53,9 @@ GPU tests and Linux aarch64 builds can run on the owner's machines as
 self-hosted GitHub Actions runners (one per GPU machine, labels
 `self-hosted, linux, gpu, x64|arm64`), in a container, as an unprivileged
 user, registered to this repository only, picking up only `gpu.yml` and
-release jobs. Installing them needs the owner's approval; until then
+release jobs. The repository is public, so the runners must only take
+manually started workflows (never `pull_request` from forks; set "Require
+approval for all outside collaborators" for workflow runs). Installing them
+needs the owner's approval; until then
 `scripts/gpu-test.sh` is run by hand through the machines' job queue and the
 results are recorded in `docs/test-runs/`.
