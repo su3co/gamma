@@ -249,12 +249,14 @@ fn find_ui_dir(explicit: Option<PathBuf>) -> Option<PathBuf> {
     }
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
+    // a source checkout first (the build also copies the interface next to
+    // the binary, where it may be older), then the installed locations
     let cands = [
+        dir.join("../../app/ui/dist"),
         dir.join("ui"),
         dir.join("../share/gamma/ui"),
         dir.join("../Resources/ui"),
         dir.join("../lib/gamma/ui"),
-        dir.join("../../app/ui/dist"),
     ];
     cands.into_iter().find(|c| c.join("index.html").is_file())
 }

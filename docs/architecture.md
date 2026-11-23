@@ -340,8 +340,10 @@ store them. SSH uses the person's own SSH configuration and keys.
 ## 10. Left out of the first release
 
 - Windows builds (code and packaging kept portable; no machine to test on).
-- lightsim-quantum integration beyond the format and the integration point:
-  the library has no stable API yet.
+- An in-process lightsim-quantum engine: gamma runs circuit documents
+  through the `lightsim-quantum` program (`run --stream`), which keeps gamma
+  buildable while that library is not public; the in-process API replaces it
+  once it is published.
 - Interactive drawing of arbitrary polygons in the layout view: layout is
   edited as gdsfactory Python or YAML (by the person or the agent), and the
   interface edits parameters, placements and connections in those files.

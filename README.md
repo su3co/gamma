@@ -21,12 +21,14 @@ them.
   own grid, mesh lines, sources, monitors, absorbing layers), run (progress,
   energy decay, live field slice), results (S-parameters, spectra, field maps,
   time series), history (checkpoints, layout and result diffs, review
-  comments). WebGL2 rendering keeps large layouts interactive.
+  comments), and quantum circuits with lightsim-quantum (HOM dips, output
+  distributions, transfer matrices). WebGL2 rendering keeps large layouts
+  interactive.
 - **Simulation anywhere**: the CPU engine locally, NVIDIA GPUs on Linux (one
   or several), and GPU servers over SSH — design on a laptop, simulate on an
   RTX PRO 6000 or a GB10, with progress and field slices streamed back.
   Device, memory and time estimates before every run.
-- **Built for agents**: an MCP server with 29 tools (inspect layout and
+- **Built for agents**: an MCP server with 32 tools (inspect layout and
   stack, place and route gdsfactory components, set up and run simulations,
   read results, design-rule and consistency checks, render any view as an
   image), a CLI with the same verbs, skills for gdsfactory and lightsim, a
@@ -139,9 +141,9 @@ A host can name a job-queue command that runs in front of the worker:
 
 ## Limitations
 
-lightsim-quantum integration is limited to reading circuit files until that
-library publishes its interface; live field slices during multi-GPU runs wait
-for lightsim's run hook. See [CHANGELOG.md](CHANGELOG.md).
+Quantum circuits run through the lightsim-quantum program when it is
+installed (that library is not public yet); live field slices during
+multi-GPU runs wait for lightsim's run hook. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

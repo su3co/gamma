@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub struct ApiError(StatusCode, String);
+pub struct ApiError(StatusCode, pub String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -169,7 +169,9 @@ pub fn router(hub: Hub) -> Router {
         .route("/api/p/{id}/agent/send", post(agent_send))
         .route("/api/p/{id}/agent/stop", post(agent_stop))
         .route("/api/p/{id}/circuits", get(circuits))
-        .route("/api/p/{id}/circuits/{name}", get(circuit));
+        .route("/api/p/{id}/circuits/{name}", get(circuit))
+        .route("/api/p/{id}/circuits/{name}/run", post(circuit_run))
+        .route("/api/p/{id}/circuits/{name}/results", get(circuit_results));
     let mut app = api.with_state(hub.clone());
     if let Some(dir) = &hub.ui_dir {
         app = app.fallback_service(
@@ -1139,14 +1141,31 @@ async fn agent_stop(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Va
     Ok(Json(json!({"stopped": true})))
 }
 
+fn quantum_engine(hub: &Hub) -> Option<gamma_quantum::ExternalEngine> {
+    gamma_quantum::ExternalEngine::find(hub.worker.parent())
+}
+
 async fn circuits(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
     let p = ps.snapshot();
-    let engine = gamma_quantum::ExternalEngine::default();
-    use gamma_quantum::Engine;
-    Ok(Json(
-        json!({"circuits": p.manifest.circuits, "engine": engine.name(), "engine_available": engine.available()}),
-    ))
+    let engine = quantum_engine(&hub);
+    Ok(Json(json!({
+        "circuits": p.manifest.circuits,
+        "engine": engine.as_ref().map(|e| e.program.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default()),
+        "engine_version": engine.as_ref().and_then(|e| e.version()),
+        "engine_available": engine.is_some(),
+    })))
+}
+
+fn circuit_path(ps: &ProjectState, name: &str) -> anyhow::Result<std::path::PathBuf> {
+    let p = ps.snapshot();
+    let c = p
+        .manifest
+        .circuits
+        .iter()
+        .find(|c| c.name == name)
+        .ok_or_else(|| anyhow::anyhow!("no circuit {name} in gamma.toml"))?;
+    Ok(p.path(&c.file))
 }
 
 async fn circuit(
@@ -1154,12 +1173,85 @@ async fn circuit(
     Path((id, name)): Path<(String, String)>,
 ) -> R<Json<Value>> {
     let ps = proj(&hub, &id)?;
-    let p = ps.snapshot();
-    let c = p
-        .manifest
-        .circuits
-        .iter()
-        .find(|c| c.name == name)
-        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, format!("no circuit {name}")))?;
-    Ok(Json(json!(gamma_quantum::read_circuit(&p.path(&c.file))?)))
+    let path = circuit_path(&ps, &name)?;
+    Ok(Json(json!(gamma_quantum::read_circuit(&path)?)))
+}
+
+async fn circuit_run(
+    State(hub): State<Hub>,
+    Path((id, name)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> R<Json<Value>> {
+    let ps = proj(&hub, &id)?;
+    let engine = quantum_engine(&hub).ok_or_else(|| bad("lightsim-quantum is not installed: put the lightsim-quantum program on PATH, next to gamma, or name it in GAMMA_LIGHTSIM_QUANTUM"))?;
+    let path = circuit_path(&ps, &name)?;
+    let a = actor(&headers);
+    let run = crate::jobs::run_id();
+    let dir = ps
+        .root()
+        .join("results")
+        .join("circuits")
+        .join(&name)
+        .join(&run);
+    ps.log
+        .push(&a, "circuit.started", json!({"circuit": name, "run": run}));
+    let ps2 = ps.clone();
+    let (n2, r2) = (name.clone(), run.clone());
+    let t0 = std::time::Instant::now();
+    let res = blocking(move || {
+        let result = engine.run(&path, &mut |p| ps2.log.ephemeral("hub", "circuit.progress", json!({"circuit": n2, "run": r2, "progress": p})))?;
+        gamma_core::fsutil::atomic_write(&dir.join("results.json"), serde_json::to_string(&result)?.as_bytes())?;
+        let info = json!({"id": r2, "circuit": n2, "status": "done", "finished": crate::events::now(), "engine": engine.version(), "seconds": t0.elapsed().as_secs_f64()});
+        gamma_core::fsutil::atomic_write(&dir.join("run.json"), serde_json::to_string_pretty(&info)?.as_bytes())?;
+        Ok(result)
+    })
+    .await;
+    match res {
+        Ok(result) => {
+            ps.log.push(
+                &a,
+                "circuit.done",
+                json!({"circuit": name, "run": run, "status": "done"}),
+            );
+            Ok(Json(
+                json!({"run": run, "summary": gamma_quantum::summarize(&result)}),
+            ))
+        }
+        Err(e) => {
+            ps.log.push(
+                &a,
+                "circuit.done",
+                json!({"circuit": name, "run": run, "status": "failed", "error": e.1}),
+            );
+            Err(e)
+        }
+    }
+}
+
+async fn circuit_results(
+    State(hub): State<Hub>,
+    Path((id, name)): Path<(String, String)>,
+) -> R<Json<Value>> {
+    let ps = proj(&hub, &id)?;
+    let base = ps.root().join("results").join("circuits").join(&name);
+    let mut runs: Vec<String> = std::fs::read_dir(&base)
+        .map(|r| {
+            r.flatten()
+                .filter(|e| e.path().join("results.json").is_file())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    runs.sort();
+    let Some(last) = runs.last() else {
+        return Ok(Json(json!({"runs": [], "summary": null})));
+    };
+    let v: Value = serde_json::from_str(
+        &std::fs::read_to_string(base.join(last).join("results.json"))
+            .map_err(anyhow::Error::from)?,
+    )
+    .map_err(anyhow::Error::from)?;
+    Ok(Json(
+        json!({"runs": runs, "run": last, "summary": gamma_quantum::summarize(&v)}),
+    ))
 }

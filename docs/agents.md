@@ -34,7 +34,8 @@ All three talk to the same hub, so the views follow whichever is working.
 | `selection_get` | What the person selected |
 | `checkpoint_create`, `checkpoint_list`, `checkpoint_diff` | Design history, layout and result diffs |
 | `comment_add` | Review comments anchored to objects and checkpoints |
-| `remotes_list`, `circuit_list` | Remote hosts; quantum circuits |
+| `remotes_list` | Remote hosts |
+| `circuit_list`, `circuit_view`, `circuit_run`, `circuit_results` | Quantum circuits with lightsim-quantum |
 
 ## Skills
 

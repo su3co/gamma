@@ -404,6 +404,9 @@ impl Server {
             "comment_add" => jtext(&c.post(&self.p("/comments"), json!({"text": args["text"], "object": args["object"], "checkpoint": args["checkpoint"]}))?),
             "remotes_list" => jtext(&c.get("/api/remotes")?),
             "circuit_list" => jtext(&c.get(&self.p("/circuits"))?),
+            "circuit_view" => jtext(&c.get(&self.p(&format!("/circuits/{}", enc(args["name"].as_str().context("name required")?))))?),
+            "circuit_run" => jtext(&c.post(&self.p(&format!("/circuits/{}/run", enc(args["name"].as_str().context("name required")?))), json!({}))?),
+            "circuit_results" => jtext(&c.get(&self.p(&format!("/circuits/{}/results", enc(args["name"].as_str().context("name required")?))))?),
             other => bail!("unknown tool {other}"),
         })
     }

@@ -11,6 +11,9 @@ section is copied into the update feed and the release notes.
 - A solver per simulation (`solver`, default `fdtd`), ready for lightsim's
   coming solvers.
 - Remote hosts whose job queue renumbers GPUs (`renumber_gpus`, `cuda:any`).
+- Quantum circuits: lightsim-quantum documents are read, run through the
+  lightsim-quantum program with progress, and their results plotted (HOM
+  dips, distributions, transfer matrices, click statistics).
 
 ## [0.1.1] - test feed only
 
