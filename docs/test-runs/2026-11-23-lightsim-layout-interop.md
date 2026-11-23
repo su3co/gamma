@@ -67,3 +67,20 @@ Touchstone and as INTERCONNECT text, then read with lightsim's
 The Linux x86_64 CUDA build (`scripts/build-cuda.sh`, CUDA 13) compiles with
 lightsim at 849fd1a. The Rust tests on macOS pass, including the check that
 gamma's step-by-step runner reproduces lightsim's `run_cpu` bit for bit.
+
+The GPU check (`scripts/gpu-test.sh`) of that build on a GB10, through the
+job queue:
+
+```text
+gamma 0.1.0, lightsim 849fd1a1a8, linux-aarch64, f32
+- cuda:0: NVIDIA GB10
+Fixture: GPU against CPU
+- cuda:0: flux relative difference 4.4e-08 (ok)
+Throughput: perf-through.json
+- cuda:0 (fused): 9000 steps in 17.2 s, 2.41 Gcells/s
+```
+
+The same agreement and throughput as with lightsim at the previous pin
+(4.4e-8, 2.40 Gcells/s). The Linux x86_64 CUDA build also compiles; its run
+on an RTX PRO 6000 waited 120 minutes for a card (both were busy with other
+work) and was not forced.
