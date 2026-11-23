@@ -5,7 +5,7 @@ integrated circuits, built for AI agents.** gamma covers the working loop of
 the Lumerical interface — layout and object tree, layer stack and materials,
 mesh, sources and monitors, run, results — on top of
 [lightsim](https://github.com/su3co/lightsim), SU3 Labs' GPU FDTD solver,
-with lightsim-quantum for circuits of quantum light to follow. The agent of
+and lightsim-quantum for circuits of quantum light. The agent of
 your choice (Claude Code, Codex, or any MCP client) works in the same project
 with the same tools you use, and every view follows its edits as it makes
 them.
@@ -28,7 +28,7 @@ them.
   or several), and GPU servers over SSH — design on a laptop, simulate on an
   RTX PRO 6000 or a GB10, with progress and field slices streamed back.
   Device, memory and time estimates before every run.
-- **Built for agents**: an MCP server with 32 tools (inspect layout and
+- **Built for agents**: an MCP server with 31 tools (inspect layout and
   stack, place and route gdsfactory components, set up and run simulations,
   read results, design-rule and consistency checks, render any view as an
   image), a CLI with the same verbs, skills for gdsfactory and lightsim, a

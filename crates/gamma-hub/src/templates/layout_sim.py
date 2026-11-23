@@ -4,7 +4,7 @@ with no design tool needed. gamma runs this script to write the simulation
 spec; edit the settings below and gamma rebuilds it.
 
 Requires the lightsim Python package (`lightsim.layout`).
-See https://su3labs.com/lightsim/docs/guide/layout-tools/
+See https://developer.su3labs.com/lightsim/docs/guide/layout-tools/
 """
 
 import json

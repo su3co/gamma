@@ -37,6 +37,9 @@ All three talk to the same hub, so the views follow whichever is working.
 | `remotes_list` | Remote hosts |
 | `circuit_list`, `circuit_view`, `circuit_run`, `circuit_results` | Quantum circuits with lightsim-quantum |
 
+Every tool's parameters, and every `gamma` command, are listed in
+[reference.md](reference.md), generated from the program.
+
 ## Skills
 
 `skills/` holds the skills gamma installs for agents: `gamma` (the working

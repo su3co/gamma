@@ -16,6 +16,15 @@ struct Tool {
     schema: Value,
 }
 
+/// Name, description and input schema of every tool (for the reference page).
+#[cfg(test)]
+pub(crate) fn tool_list() -> Vec<(&'static str, &'static str, Value)> {
+    tools()
+        .into_iter()
+        .map(|t| (t.name, t.description, t.schema))
+        .collect()
+}
+
 fn obj(props: Value, required: &[&str]) -> Value {
     json!({"type": "object", "properties": props, "required": required})
 }
@@ -67,13 +76,16 @@ fn tools() -> Vec<Tool> {
         Tool {
             name: "stack_set",
             description: "Replace the layer stack (same structure as stack_get returns). Prefer editing stack.toml for small changes.",
-            schema: obj(json!({"stack": json!({"type": "object"})}), &["stack"]),
+            schema: obj(
+                json!({"stack": json!({"type": "object", "description": "the whole stack as stack_get returns it: layers (name, gds, zmin, thickness, material, ...) and materials"})}),
+                &["stack"],
+            ),
         },
         Tool {
             name: "place_component",
             description: "Place (or replace) a gdsfactory component instance in a YAML netlist (layout/*.pic.yml), then rebuild. Example: component mmi1x2, settings {length_mmi: 5.5}.",
             schema: obj(
-                json!({"netlist": s("netlist file, default layout/top.pic.yml"), "name": s("instance name"), "component": s("gdsfactory cell name"), "settings": json!({"type": "object"}), "x": n("um"), "y": n("um"), "rotation": n("degrees"), "mirror": b("mirror")}),
+                json!({"netlist": s("netlist file, default layout/top.pic.yml"), "name": s("instance name"), "component": s("gdsfactory cell name"), "settings": json!({"type": "object", "description": "parameters of the cell, e.g. {\"length\": 10}"}), "x": n("um"), "y": n("um"), "rotation": n("degrees"), "mirror": b("mirror")}),
                 &["name", "component"],
             ),
         },
@@ -154,7 +166,7 @@ fn tools() -> Vec<Tool> {
             name: "view_render",
             description: "Render a viewer to an image to look at it: layout (highlight=refs separated by ;, window=x0,y0,x1,y1), 3d, setup (sim, axis, coord, preview), field (sim, monitor, quantity, f, run), live (job), spectrum, sparams, decay, time.",
             schema: obj(
-                json!({"view": s("layout | 3d | setup | field | live | spectrum | sparams | decay | time"), "sim": s(""), "run": s(""), "monitor": s(""), "quantity": s(""), "f": n(""), "axis": n("0, 1, 2"), "coord": n("m"), "preview": b(""), "job": s(""), "highlight": s(""), "window": s(""), "theme": s("dark | light"), "width": n("px"), "height": n("px")}),
+                json!({"view": s("layout | 3d | setup | field | live | spectrum | sparams | decay | time"), "sim": s("simulation name"), "run": s("run id (default: the latest)"), "monitor": s("monitor name"), "quantity": s("field quantity, e.g. |E|2, Ey (default |E|2)"), "f": n("frequency index"), "axis": n("0, 1, 2"), "coord": n("m"), "preview": b("the coarse preview variant"), "job": s("job id (view live)"), "highlight": s("references to highlight, separated by ;"), "window": s("x0,y0,x1,y1 in um"), "theme": s("dark | light"), "width": n("px"), "height": n("px")}),
                 &["view"],
             ),
         },
@@ -185,7 +197,7 @@ fn tools() -> Vec<Tool> {
             name: "comment_add",
             description: "Add a review comment, optionally anchored to an object reference and a checkpoint.",
             schema: obj(
-                json!({"text": s(""), "object": s("e.g. port:o1"), "checkpoint": n("")}),
+                json!({"text": s("the comment"), "object": s("e.g. port:o1"), "checkpoint": n("checkpoint number it refers to (default: the current state)")}),
                 &["text"],
             ),
         },
@@ -195,11 +207,61 @@ fn tools() -> Vec<Tool> {
             schema: obj(json!({}), &[]),
         },
         Tool {
+            name: "export_sparams",
+            description: "Write a run's S-parameters to a file in the run's folder, in a format other tools read: Touchstone (.sNp, exp(+jwt), as lightsim writes it) or Lumerical INTERCONNECT text (.dat, exp(-iwt)). Returns the path.",
+            schema: obj(
+                json!({"sim": s("simulation name"), "run": s("run id (default: the latest finished run)"), "format": json!({"type": "string", "enum": ["touchstone", "lumerical"], "description": "file format (default touchstone)"})}),
+                &["sim"],
+            ),
+        },
+        Tool {
             name: "circuit_list",
             description: "Quantum circuits of the project (lightsim-quantum) and whether the engine is installed.",
             schema: obj(json!({}), &[]),
         },
+        Tool {
+            name: "circuit_view",
+            description: "One quantum circuit: its components, connections, external ports, inputs and outputs, frequencies and tasks.",
+            schema: obj(json!({"name": s("circuit name")}), &["name"]),
+        },
+        Tool {
+            name: "circuit_run",
+            description: "Run a quantum circuit with the lightsim-quantum engine (when installed) and wait for it; returns the run id and a summary of the results (plots, bar charts, tables).",
+            schema: obj(json!({"name": s("circuit name")}), &["name"]),
+        },
+        Tool {
+            name: "circuit_results",
+            description: "Results of a quantum circuit's latest run, summarised as plots, bar charts and tables (HOM dips, output distributions, |T|^2, click statistics).",
+            schema: obj(json!({"name": s("circuit name")}), &["name"]),
+        },
     ]
+}
+
+#[cfg(test)]
+mod tool_list_tests {
+    /// Every tool the server answers is listed in tools/list, and the other way round.
+    #[test]
+    fn every_handled_tool_is_listed() {
+        let src = include_str!("mcp.rs");
+        let body = &src[src.find("fn call(&self").unwrap()
+            ..src.find("other => bail!(\"unknown tool").unwrap()];
+        let mut handled: Vec<&str> = body
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim_start();
+                let rest = t.strip_prefix('"')?;
+                let end = rest.find('"')?;
+                rest[end + 1..]
+                    .trim_start()
+                    .starts_with("=>")
+                    .then(|| &rest[..end])
+            })
+            .collect();
+        handled.sort();
+        let mut listed: Vec<&str> = super::tools().iter().map(|t| t.name).collect();
+        listed.sort();
+        assert_eq!(handled, listed);
+    }
 }
 
 fn text(v: impl Into<String>) -> Value {

@@ -12,3 +12,4 @@ are named by model.
 | 2026-11-22 | RTX PRO 6000: remote run from a Mac hub through a job queue; GPU against CPU (4.4e-8) | [gpu-rtx-pro-6000](2026-11-22-gpu-rtx-pro-6000.md) |
 | 2026-11-22 | Start-up time, one million polygons | [performance](2026-11-22-performance.md) |
 | 2026-11-22 | Claude Code driving gamma through MCP | [agent-mcp](2026-11-22-agent-mcp.md) |
+| 2026-11-23 | A project from a plain GDS through lightsim's layout layer; S-parameter files read by lightsim | [lightsim-layout-interop](2026-11-23-lightsim-layout-interop.md) |

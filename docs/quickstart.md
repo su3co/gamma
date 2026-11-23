@@ -82,8 +82,8 @@ cd my-chip && gamma open
 
 When the project has ports, gamma adds a simulation `sparams` whose script,
 `sims/sparams.py`, calls lightsim's tool-neutral layout layer
-(`lightsim.layout.simulation`, see lightsim's guide *Using lightsim from any
-layout tool*): a mode source at the first port and mode monitors at every
+(`lightsim.layout.simulation`, see lightsim's guide [Using lightsim from any
+layout tool](https://developer.su3labs.com/lightsim/docs/guide/layout-tools/)): a mode source at the first port and mode monitors at every
 port, the port waveguides extended through the absorber, 3-D on a graded
 mesh of 20 steps per wavelength. Edit the settings at the top of the script
 (source port, 2-D or 3-D, mesh, margins); gamma rebuilds the spec when the

@@ -3,6 +3,8 @@
 
 mod client;
 mod mcp;
+#[cfg(test)]
+mod reference;
 mod worker;
 
 use anyhow::{Context, Result, bail};
@@ -33,6 +35,7 @@ struct Cli {
 enum Cmd {
     /// Run the hub (one per machine and user)
     Hub {
+        /// Port on 127.0.0.1 (0: any free port)
         #[arg(long, default_value_t = 0)]
         port: u16,
         /// Folder of the built interface to serve to browsers
@@ -54,7 +57,9 @@ enum Cmd {
     },
     /// Create a project in a folder (empty, or around a GDS file from any design tool)
     Init {
+        /// Project folder (default: the current folder)
         dir: Option<PathBuf>,
+        /// Project name (default: the folder or GDS file name)
         #[arg(long)]
         name: Option<String>,
         /// Start from this GDS file (copied into layout/)
@@ -69,7 +74,9 @@ enum Cmd {
     },
     /// Export a run's S-parameters (Touchstone .sNp or Lumerical INTERCONNECT .dat)
     Export {
+        /// Simulation name
         sim: String,
+        /// Run id (default: the latest finished run)
         #[arg(long)]
         run: Option<String>,
         /// touchstone or lumerical
@@ -80,22 +87,29 @@ enum Cmd {
         out: Option<PathBuf>,
     },
     /// Open a project in the hub and print its id and address
-    Open { dir: Option<PathBuf> },
+    Open {
+        /// Project folder (default: the current folder)
+        dir: Option<PathBuf>,
+    },
     /// Project overview
     Info,
     /// Regenerate files from their sources (all, layout, sim:<name>)
     Build {
+        /// all, layout or sim:<name>
         #[arg(default_value = "all")]
         target: String,
     },
     /// What a simulation describes, the grid and run-time estimates
     Setup {
+        /// Simulation name
         sim: String,
+        /// The coarse preview variant
         #[arg(long)]
         preview: bool,
     },
     /// Run a simulation
     Run {
+        /// Simulation name
         sim: String,
         /// cpu, cuda:0, cuda:0,1
         #[arg(long)]
@@ -103,6 +117,7 @@ enum Cmd {
         /// Remote host name
         #[arg(long)]
         host: Option<String>,
+        /// Run the coarse preview variant
         #[arg(long)]
         preview: bool,
         /// Return at once instead of following the job
@@ -111,17 +126,23 @@ enum Cmd {
     },
     /// List jobs, or follow/cancel one
     Jobs {
+        /// Job id: follow it (default: list all jobs)
         id: Option<String>,
+        /// Cancel the job
         #[arg(long)]
         cancel: bool,
     },
     /// Results of a run (latest by default)
     Results {
+        /// Simulation name
         sim: String,
+        /// Run id (default: the latest finished run)
         #[arg(long)]
         run: Option<String>,
+        /// overview, sparams, spectrum, field, time, decay or farfield
         #[arg(long, default_value = "overview")]
         what: String,
+        /// Monitor (for spectrum, field, time and farfield)
         #[arg(long)]
         monitor: Option<String>,
     },
@@ -129,19 +150,29 @@ enum Cmd {
     Check,
     /// Render a viewer to PNG: gamma view layout -o out.png [key=value ...]
     View {
+        /// layout, 3d, setup, field, live, spectrum, sparams, decay or time
         view: String,
+        /// PNG file to write
         #[arg(short, long)]
         out: PathBuf,
+        /// View parameters as key=value (sim, run, monitor, quantity, f, axis, coord, preview, job, highlight, window, theme, width, height)
         params: Vec<String>,
     },
     /// Create a checkpoint, or list them
     Checkpoint {
+        /// Checkpoint message
         message: Option<String>,
+        /// List the checkpoints instead
         #[arg(long)]
         list: bool,
     },
     /// Compare two checkpoints (or one with the current state)
-    Diff { a: u32, b: Option<u32> },
+    Diff {
+        /// Checkpoint number
+        a: u32,
+        /// Second checkpoint (default: the current state)
+        b: Option<u32>,
+    },
     /// Remote simulation hosts
     Remote {
         #[command(subcommand)]
@@ -160,9 +191,12 @@ enum Cmd {
 enum WorkerCmd {
     /// Run a lightsim spec
     Run {
+        /// lightsim JSON spec
         spec: PathBuf,
+        /// cpu, cuda:0 or cuda:0,1
         #[arg(long, default_value = "cpu")]
         device: String,
+        /// Results file (default: results.json next to the spec)
         #[arg(long)]
         out: Option<PathBuf>,
         /// auto, none, or COMPONENT,AXIS,COORDINATE
@@ -180,6 +214,7 @@ enum WorkerCmd {
 enum RemoteCmd {
     /// Add (or replace) a host
     Add {
+        /// Name to refer to the host by
         name: String,
         /// user@host or an SSH config alias
         ssh: String,
@@ -193,17 +228,23 @@ enum RemoteCmd {
         #[arg(long)]
         renumber_gpus: bool,
     },
+    /// List the hosts
     List,
+    /// Remove a host
     Remove {
+        /// Host name
         name: String,
     },
     /// Check the connection, the installed gamma and its GPUs
     Test {
+        /// Host name
         name: String,
     },
     /// Copy a gamma build for the host's platform to the host
     Install {
+        /// Host name
         name: String,
+        /// gamma program built for the host (e.g. gamma-linux-x86_64-cuda)
         #[arg(long)]
         binary: PathBuf,
     },
@@ -213,11 +254,15 @@ enum RemoteCmd {
 enum AgentCmd {
     /// Write the MCP configuration an agent CLI reads in this project (.mcp.json for Claude Code; prints the Codex command)
     Setup {
+        /// claude or codex
         #[arg(default_value = "claude")]
         provider: String,
     },
     /// Send a message to the in-app agent session
-    Send { text: String },
+    Send {
+        /// The message
+        text: String,
+    },
 }
 
 fn project_dir(cli: &Cli) -> Result<PathBuf> {
