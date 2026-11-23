@@ -279,7 +279,11 @@ impl Jobs {
         let dir = ps.root().join("results").join(&job.sim).join(&job.run_id);
         tokio::fs::create_dir_all(&dir).await?;
         let spec_path = dir.join("spec.json");
-        gamma_core::fsutil::atomic_write(&spec_path, sim.to_json().as_bytes())?;
+        // the spec as written (unknown keys pass through to the worker)
+        let text = ps
+            .sim_text(&job.sim, job.preview)
+            .unwrap_or_else(|_| sim.to_json());
+        gamma_core::fsutil::atomic_write(&spec_path, text.as_bytes())?;
         let p = ps.snapshot();
         let commit = std::process::Command::new("git")
             .arg("-C")

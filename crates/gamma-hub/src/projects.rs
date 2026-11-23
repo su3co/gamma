@@ -193,6 +193,34 @@ impl ProjectState {
         Ok(sim)
     }
 
+    /// The simulation file a run uses, as text. Specs are passed through as
+    /// written, so keys this gamma does not know (a newer lightsim's) reach the
+    /// worker; a preview the hub coarsens itself changes only `mesh` and
+    /// `run_time` of the original JSON.
+    pub fn sim_text(&self, name: &str, preview: bool) -> Result<String> {
+        let p = self.snapshot();
+        let cfg = p.sim(name)?;
+        let path = p.path(&cfg.spec);
+        if !preview {
+            return Ok(std::fs::read_to_string(&path)?);
+        }
+        let built = p.path(&preview_spec_rel(&cfg.spec));
+        let scaled = self.sim(name, true)?;
+        if built.is_file() {
+            let text = std::fs::read_to_string(&built)?;
+            if let Ok(sim) = Simulation::from_json(&text) {
+                if sim == *scaled {
+                    return Ok(text);
+                }
+            }
+        }
+        let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+        let sv = serde_json::to_value(&*scaled)?;
+        v["mesh"] = sv["mesh"].clone();
+        v["run_time"] = sv["run_time"].clone();
+        Ok(serde_json::to_string(&v)?)
+    }
+
     /// Run a generator script with the project's interpreter.
     pub async fn run_generator(&self, script: &str, actor: &str, what: &str) -> Result<Value> {
         self.run_generator_env(script, actor, what, &[]).await

@@ -94,7 +94,7 @@ const SPEC: &str = r#"{
   "name": "wire",
   "region": {"min": [0, -1e-6, -0.6e-6], "max": [3e-6, 1e-6, 0.8e-6]},
   "mesh": {"type": "uniform", "dx": [60e-9, 60e-9, 50e-9]},
-  "boundaries": {"x": [{"type": "pml", "layers": 8}, {"type": "pml", "layers": 8}],
+  "boundaries": {"x": [{"type": "pml", "layers": 8, "params": {"order": 3, "sigma_scale": 1, "kappa_max": 2, "alpha_max": 0, "stabilize": true}}, {"type": "pml", "layers": 8}],
                  "y": [{"type": "pml", "layers": 8}, {"type": "pml", "layers": 8}],
                  "z": [{"type": "pml", "layers": 8}, {"type": "pml", "layers": 8}]},
   "run_time": 20e-15,
@@ -188,6 +188,13 @@ fn hub_api_run_checkpoint_and_mcp() {
     assert_eq!(j["status"], "done", "{j}");
     let runs = hub.get(&pp("/runs?sim=wire"));
     let run = runs[0]["id"].as_str().unwrap().to_string();
+    // keys this lightsim does not know reach the worker unchanged
+    let copied =
+        std::fs::read_to_string(root.join("results/wire").join(&run).join("spec.json")).unwrap();
+    assert!(
+        copied.contains("\"stabilize\": true"),
+        "the spec copy dropped an unknown key"
+    );
     let o = hub.get(&pp(&format!("/runs/wire/{run}/overview")));
     assert_eq!(o["monitors"].as_array().unwrap().len(), 2);
     let f = hub.get(&pp(&format!("/runs/wire/{run}/field?monitor=top&q=|E|2")));
