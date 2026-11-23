@@ -6,6 +6,12 @@
 //! port's). Touchstone needs the whole matrix: the entries that were not
 //! computed are written as 0 and a comment says which column is real. The
 //! Lumerical format lists only the entries present.
+//!
+//! Phase convention: the complex S values are written as lightsim computes
+//! them, with time dependence exp(-i ω t) (the physics convention). Tools
+//! that use exp(+j ω t) see the complex conjugate. Both files say so in a
+//! header comment where the format allows one; this will follow lightsim's
+//! own S-parameter writers once their convention per format is documented.
 
 use crate::results::SParams;
 use lightsim_core::constants::C0;
