@@ -42,22 +42,48 @@ them.
 | ![Layout](docs/img/layout-dark.png) | ![3-D](docs/img/3d-light.png) |
 | ![Set-up](docs/img/setup-light.png) | ![Run](docs/img/run-dark.png) |
 
-## Install
+## Status
 
-| Platform | Package | Updates |
-|---|---|---|
-| macOS 13+ (Apple silicon) | `gamma_<version>_aarch64.dmg` | automatic (signed feed) |
-| Linux x86_64, aarch64 | `gamma_<version>_<arch>.AppImage` | automatic (signed feed) |
-| Debian, Ubuntu | `gamma_<version>_<arch>.deb` | apt repository |
-| Fedora, RHEL, openSUSE | `gamma-<version>-1.<arch>.rpm` | dnf/zypper repository |
-| GPU servers (headless) | `gamma-linux-<arch>-cuda` | `gamma remote install` |
+Early: version 0.1.0, not yet released as binaries. It builds and is tested
+on macOS (Apple silicon) and Linux (x86_64 and aarch64); Windows packaging is
+configured but untested. For now, build gamma from source.
 
-Details, repositories and building from source: [docs/install.md](docs/install.md).
+## Build from source
+
+Requirements: [Rust](https://rustup.rs) (the pinned toolchain installs itself),
+Node.js 20 or newer, git, and Python 3.10+ for project scripts. On Linux also
+the WebKitGTK 4.1 and GTK 3 development packages:
+
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev   # Debian, Ubuntu
+sudo dnf install webkit2gtk4.1-devel gtk3-devel libappindicator-gtk3-devel librsvg2-devel      # Fedora
+```
+
+Then:
+
+```bash
+git clone https://github.com/su3co/gamma && cd gamma
+scripts/run-from-source.sh          # builds the interface, the gamma program and the app, then starts it
+```
+
+The `gamma` program on its own (hub, CLI, MCP server, simulation worker) needs
+only Rust:
+
+```bash
+cargo build --release -p gamma-cli          # target/release/gamma (CPU)
+scripts/build-cuda.sh                       # with NVIDIA GPU support (Linux, CUDA 13)
+cargo test --release --workspace            # unit and end-to-end tests
+```
+
+Installers for your platform: `scripts/package.sh` (macOS `.dmg`; Linux
+AppImage, `.deb`, `.rpm`) or `packaging/linux/build.sh` (Linux packages in a
+Docker container). Signed releases with automatic updates are planned:
+[docs/install.md](docs/install.md), [docs/release.md](docs/release.md).
 
 ## Quick start
 
 ```bash
-git clone https://github.com/su3co/gamma && cd gamma
+git clone https://github.com/su3co/gamma && cd gamma        # if you have not already
 python3 -m venv .venv && .venv/bin/pip install gdsfactory "lightsim @ git+https://github.com/su3co/lightsim" ./python
 cargo build --release -p gamma-cli
 cd examples/mmi-splitter
@@ -100,12 +126,11 @@ A host can name a job-queue command that runs in front of the worker:
 - [Install and update](docs/install.md) · [Quick start](docs/quickstart.md) · [Agents](docs/agents.md) · [Remote GPU hosts](docs/remote.md)
 - [Developing gamma](docs/development.md) · [Releasing](docs/release.md) · [Test runs](docs/test-runs/)
 
-## Status
+## Limitations
 
-First release candidate (0.1.0, not yet released). macOS and Linux are
-built and tested; Windows packaging is configured but untested.
 lightsim-quantum integration is limited to reading circuit files until that
-library publishes its interface. See [CHANGELOG.md](CHANGELOG.md).
+library publishes its interface; live field slices during multi-GPU runs wait
+for lightsim's run hook. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

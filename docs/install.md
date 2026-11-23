@@ -1,5 +1,9 @@
 # Installing and updating gamma
 
+> Binary packages are not published yet: build gamma from source as the
+> [README](../README.md#build-from-source) describes. This page describes the
+> packages and updates as they will work once releases are signed and published.
+
 gamma has two parts in one package: the desktop app (window) and the `gamma`
 program (hub, CLI, MCP server, simulation worker). The app starts the hub
 itself; the program is also on your PATH for the terminal and for agents.
