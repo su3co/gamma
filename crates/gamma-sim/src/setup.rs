@@ -622,3 +622,88 @@ pub(crate) mod tests {
         assert!(g.grid.cells * 3 < s.grid.cells);
     }
 }
+
+/// |E|² of a mode profile stored in the spec (a mode source or monitor), on
+/// the plane's grid cells.
+#[derive(Clone, Debug, Serialize)]
+pub struct ModeView {
+    pub name: String,
+    pub neff: f64,
+    pub neff_imag: f64,
+    pub freq: f64,
+    pub axis: usize,
+    pub axes: [usize; 2],
+    pub dims: [usize; 2],
+    pub u: Vec<f64>,
+    pub v: Vec<f64>,
+    pub intensity: Vec<f32>,
+}
+
+pub fn mode_profile(sim: &Simulation, name: &str, index: usize) -> Result<ModeView> {
+    use lightsim_core::monitors::Monitor as M;
+    use lightsim_core::sources::Source as S;
+    let found = sim
+        .sources
+        .iter()
+        .find_map(|s| match s {
+            S::Mode {
+                name: n,
+                axis,
+                min,
+                max,
+                profile,
+                ..
+            } if n == name => Some((*axis, *min, *max, profile.clone())),
+            _ => None,
+        })
+        .or_else(|| {
+            sim.monitors.iter().find_map(|m| match m {
+                M::Mode {
+                    name: n,
+                    axis,
+                    min,
+                    max,
+                    modes,
+                    ..
+                } if n == name => modes.get(index).map(|p| (*axis, *min, *max, p.clone())),
+                _ => None,
+            })
+        });
+    let Some((axis, min, max, p)) = found else {
+        anyhow::bail!("no mode source or mode monitor named '{name}' with a mode {index}")
+    };
+    let grid = sim.build_grid()?;
+    let axes = match axis {
+        0 => [1, 2],
+        1 => [0, 2],
+        _ => [0, 1],
+    };
+    let [nu, nv] = p.dims;
+    let coords = |a: usize, n: usize| -> Vec<f64> {
+        let i0 = grid.cell_index(a, min[a]);
+        (0..n)
+            .map(|i| grid.center(a, (i0 + i).min(grid.n()[a] - 1)))
+            .collect()
+    };
+    let mut intensity = vec![0f32; nu * nv];
+    for c in 0..2 {
+        for (k, x) in intensity.iter_mut().enumerate() {
+            let re = p.e_re[c].get(k).copied().unwrap_or(0.0);
+            let im = p.e_im[c].get(k).copied().unwrap_or(0.0);
+            *x += (re * re + im * im) as f32;
+        }
+    }
+    let _ = max;
+    Ok(ModeView {
+        name: name.into(),
+        neff: p.neff,
+        neff_imag: p.neff_imag,
+        freq: p.freq,
+        axis,
+        axes,
+        dims: [nu, nv],
+        u: coords(axes[0], nu),
+        v: coords(axes[1], nv),
+        intensity,
+    })
+}

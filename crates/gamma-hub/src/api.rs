@@ -147,6 +147,7 @@ pub fn router(hub: Hub) -> Router {
         .route("/api/p/{id}/sims/{name}/setup", get(sim_setup))
         .route("/api/p/{id}/sims/{name}/slice", get(sim_slice))
         .route("/api/p/{id}/sims/{name}/run", post(sim_run))
+        .route("/api/p/{id}/sims/{name}/mode", get(sim_mode))
         .route("/api/p/{id}/runs", get(runs))
         .route("/api/p/{id}/runs/{sim}/{run}/{what}", get(run_view))
         .route("/api/p/{id}/runs/{sim}/{run}/export", post(run_export))
@@ -692,6 +693,33 @@ async fn sim_slice(
             m.extend(x.to_le_bytes());
         }
         v["medium"] = json!(base64::engine::general_purpose::STANDARD.encode(m));
+        Ok(Json(v))
+    })
+    .await
+}
+
+async fn sim_mode(
+    State(hub): State<Hub>,
+    Path((id, name)): Path<(String, String)>,
+    Query(q): Q,
+) -> R<Json<Value>> {
+    let ps = proj(&hub, &id)?;
+    let obj = q
+        .get("object")
+        .cloned()
+        .ok_or_else(|| bad("object=<mode source or monitor name> required"))?;
+    let index: usize = q.get("mode").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let pv = preview(&q);
+    blocking(move || {
+        let sim = ps.sim(&name, pv)?;
+        let m = gamma_sim::setup::mode_profile(&sim, &obj, index)?;
+        let mut v = serde_json::to_value(&m)?;
+        use base64::Engine;
+        let mut b = Vec::with_capacity(m.intensity.len() * 4);
+        for x in &m.intensity {
+            b.extend(x.to_le_bytes());
+        }
+        v["intensity"] = json!(base64::engine::general_purpose::STANDARD.encode(b));
         Ok(Json(v))
     })
     .await

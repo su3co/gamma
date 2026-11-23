@@ -1,11 +1,29 @@
 // The selected object: what it is, its parameters, and actions.
 
 import { store } from "../lib/store";
+import { b64f32 } from "../lib/api";
+import { paintMap } from "../lib/colormap";
 import { el, fmt } from "../lib/util";
 
 export class Inspector {
   root = el("div", { class: "inspector", "aria-live": "polite" });
   constructor() { store.on("selection", () => this.render()); this.render(); }
+  /** |E|² of the mode profile a mode source or monitor carries. */
+  modeView(ref: string): HTMLElement {
+    const [sim, name] = ref.split(":")[1].split("/");
+    const box = el("div", { style: { margin: "10px 0" } }, el("div", { class: "muted small" }, "mode profile…"));
+    store.hub.get(store.p(`/sims/${encodeURIComponent(sim)}/mode?object=${encodeURIComponent(name)}`)).then((m) => {
+      const data = b64f32(m.intensity);
+      const [nu, nv] = m.dims;
+      const img = paintMap(data, nu, nv, "intensity", store.theme === "dark");
+      const c = el("canvas", { width: String(nu), height: String(nv), style: { width: "100%", imageRendering: "auto", border: "1px solid var(--rule)", borderRadius: "3px" } }) as HTMLCanvasElement;
+      c.getContext("2d")!.putImageData(img, 0, 0);
+      const ax = ["x", "y", "z"];
+      box.replaceChildren(c, el("div", { class: "small mono muted" }, `|E|² · n_eff ${fmt(m.neff, 4)} · ${fmt(299792458 / m.freq * 1e9, 1)} nm · ${ax[m.axes[0]]}–${ax[m.axes[1]]} plane, ${nu}×${nv} cells`));
+    }).catch((e) => box.replaceChildren(el("div", { class: "muted small" }, e.message)));
+    return box;
+  }
+
   render() {
     const s = store.selection;
     if (!s) {
@@ -45,6 +63,7 @@ export class Inspector {
       el("div", { class: "ref" }, s.reference),
       el("p", {}, s.description),
       kv.length ? el("dl", { class: "kv" }, ...kv.flatMap(([k, v]) => [el("dt", {}, k), el("dd", { title: v }, v)])) : "",
+      d && d.type === "mode" && (d.kind === "source" || d.kind === "monitor") ? this.modeView(s.reference) : "",
       el("div", { class: "actions" },
         el("button", { class: "link accent", onclick: () => store.emit("ask", s) }, "Ask the agent about this"),
         s.bbox ? el("button", { class: "link", onclick: () => { store.setTab("layout"); store.emit("zoom-to", s.bbox); } }, "Show in layout") : null,
