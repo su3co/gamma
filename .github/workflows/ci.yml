@@ -74,7 +74,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install ./python && python -c "import gamma_pic; print(gamma_pic.mesh_scale())"
-      - run: python -m py_compile examples/*/layout/*.py examples/*/sims/*.py packaging/make-feed.py
+      - run: python -m py_compile examples/*/layout/*.py examples/*/sims/*.py crates/gamma-hub/src/templates/*.py packaging/make-feed.py
 
   macos:
     name: macOS build and tests (Apple silicon)

@@ -109,7 +109,10 @@ gamma init my-chip --gds chip.gds --stack stack.toml --ports ports.csv
 ```
 
 copies the layout into a new project; ports come from the CSV
-(`name,x,y,width,orientation`) or from gdsfactory metadata in the file. See
+(`name,x,y,width,orientation`) or from gdsfactory metadata in the file. The
+project gets an S-parameter simulation, `sims/sparams.py`, which lightsim's
+tool-neutral layout layer sets up from the GDS, the stack and the ports (it
+needs the lightsim Python package, not gdsfactory). See
 [docs/quickstart.md](docs/quickstart.md#start-from-a-gds-file).
 
 ## Agents

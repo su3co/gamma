@@ -80,10 +80,28 @@ cd my-chip && gamma open
   optional `layer,datatype`) or a JSON list; without it gamma reads the ports
   gdsfactory stores in the GDS, if any.
 
-Simulations are lightsim JSON files (`[[simulation]] spec = ...`), written by
-hand, by lightsim's Python API, or by any script. Results export with
-`gamma export <sim> --format touchstone` (`.sNp`) or `--format lumerical`
-(INTERCONNECT `.dat`).
+When the project has ports, gamma adds a simulation `sparams` whose script,
+`sims/sparams.py`, calls lightsim's tool-neutral layout layer
+(`lightsim.layout.simulation`, see lightsim's guide *Using lightsim from any
+layout tool*): a mode source at the first port and mode monitors at every
+port, the port waveguides extended through the absorber, 3-D on a graded
+mesh of 20 steps per wavelength. Edit the settings at the top of the script
+(source port, 2-D or 3-D, mesh, margins); gamma rebuilds the spec when the
+file changes. It needs the lightsim Python package in the project's
+interpreter (`[python] interpreter` in `gamma.toml`).
+
+```bash
+gamma build sim:sparams
+gamma setup sparams
+gamma run sparams --preview
+```
+
+Other simulations are lightsim JSON files (`[[simulation]] spec = ...`),
+written by hand, by lightsim's Python API, or by any script. Results export
+with `gamma export <sim> --format touchstone` (`.sNp`) or `--format lumerical`
+(INTERCONNECT `.dat`); the files are laid out as lightsim's own writers lay
+them out, and lightsim's `SParameters.from_touchstone` and
+`from_lumerical_dat` read them.
 
 ## The lightsim examples
 

@@ -5,6 +5,13 @@ section is copied into the update feed and the release notes.
 
 ## [Unreleased]
 
+- `gamma init --gds` adds an S-parameter simulation, `sims/sparams.py`, set
+  up by lightsim's tool-neutral layout layer (`lightsim.layout.simulation`)
+  from the GDS, `stack.toml` and the port file; ports read from gdsfactory
+  metadata are written as `layout/ports.json`.
+- Touchstone and INTERCONNECT files are laid out as lightsim's writers lay
+  them out (`! port k = name@mode` comments, GHz, single-quoted block headers,
+  unwrapped phase), so lightsim's readers read them.
 - Touchstone files are written in exp(+jωt), the complex conjugate of
   lightsim's exp(-iωt) data, matching lightsim's own Touchstone writer; the
   header states it. INTERCONNECT text is unchanged.

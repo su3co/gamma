@@ -241,17 +241,29 @@ file from either tool: lightsim computes in exp(-iωt); Touchstone files are
 written in exp(+jωt) (the complex conjugate, as scikit-rf, ADS and Spectre
 assume; the header says so), and the INTERCONNECT text keeps exp(-iωt).
 
-lightsim is gaining its own tool-neutral layer (GDS/OASIS in with a
-technology and port description, Touchstone and Lumerical-text S-parameters
-out). When it exists gamma will call it for what it does not do itself
-today: OASIS import, building a simulation spec with mode ports directly from
-GDS + technology + ports (no Python script), and reading the technology
-format as an alternative to `stack.toml`. What gamma needs from it: a CLI or
-Python entry point `GDS/OASIS + technology + ports -> lightsim spec`, stable
-documented file formats for the technology and port descriptions, and the
-same S-parameter writers (gamma's own Rust writers stay as the default).
-KLayout (with SiEPIC), circuit-simulator export and Nazca follow on the same
-neutral layer.
+The simulation of a project made from a GDS file comes from lightsim's
+tool-neutral layout layer: `gamma init --gds` writes `sims/sparams.py`, which
+calls `lightsim.layout.simulation(gds, "stack.toml", ports, cell=...,
+sources=[...])` and writes the spec of one mode source (the hub's usual
+generator protocol, including the coarse preview variant). lightsim reads
+gamma's `stack.toml` and port files as they are and keeps copies of them as
+test fixtures. When the GDS carries gdsfactory port metadata and no port
+file is given, gamma writes the ports it reads from the metadata as
+`layout/ports.json`, so lightsim needs no gdsfactory either. Spec set-up
+stays in Python because lightsim's mode solver is Python; the run itself is
+gamma's Rust worker. Checked on lightsim's copy of gamma's MMI fixture (2-D,
+CPU): the run through gamma and `lightsim.layout.sparameters` agree to 6e-14
+over the source column.
+
+gamma's S-parameter writers stay in Rust, laid out like lightsim's
+`SParameters.to_touchstone` and `to_lumerical_dat` (port comments
+`! port k = name@mode`, GHz, single-quoted INTERCONNECT block headers with
+modes from 1, unwrapped phase); lightsim's readers read gamma's files, and
+lightsim's writers given the same data write the same numbers. OASIS files
+are read by neither yet (save them as GDS in KLayout). SiEPIC pins, KLayout
+layer properties and gdsfactory layer stacks are read by lightsim's layer
+(`ports="siepic"`, `read_lyp`, `technology_from_gdsfactory`); gamma does not
+expose them yet.
 
 ## 5b. Solvers
 

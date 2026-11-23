@@ -574,6 +574,14 @@ pub fn init_project(root: &Path, name: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Simulation script written into projects made from a GDS file.
+const LAYOUT_SIM_TEMPLATE: &str = include_str!("templates/layout_sim.py");
+
+fn natural_key(s: &str) -> (String, u64) {
+    let i = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
+    (s[..i].to_string(), s[i..].parse().unwrap_or(0))
+}
+
 /// Create a project around a plain GDS file (any design tool): the GDS is
 /// copied to `layout/`, the stack is copied or the generic SOI stack written,
 /// and ports come from a ports file (JSON or CSV) or from gdsfactory metadata
@@ -616,7 +624,25 @@ pub fn init_from_gds(
             )?;
             Some(rel)
         }
-        None => None,
+        None => {
+            // ports from the GDS's gdsfactory metadata, written as a neutral
+            // port file so tools other than gamma read them too
+            let kp = lib.kfactory_ports(&top);
+            if kp.is_empty() {
+                None
+            } else {
+                let list: Vec<Value> = kp
+                    .iter()
+                    .map(|(n, x, y, w, o)| json!({"name": n, "x": x, "y": y, "width": w, "orientation": o, "layer": null}))
+                    .collect();
+                let rel = "layout/ports.json".to_string();
+                gamma_core::fsutil::atomic_write(
+                    &root.join(&rel),
+                    serde_json::to_string_pretty(&list)?.as_bytes(),
+                )?;
+                Some(rel)
+            }
+        }
     };
     let st = root.join("stack.toml");
     match stack {
@@ -634,6 +660,39 @@ pub fn init_from_gds(
             .unwrap_or(top.clone())
     });
     let mut m = gamma_core::Manifest::new(&name);
+    // an S-parameter simulation set up by lightsim's layout layer, launched
+    // from the first port
+    let source = ports_rel
+        .as_ref()
+        .and_then(|rel| std::fs::read_to_string(root.join(rel)).ok())
+        .and_then(|t| gamma_core::layout::parse_ports(&t).ok())
+        .and_then(|mut l| {
+            l.sort_by_key(|p| natural_key(&p.name));
+            l.into_iter().next().map(|p| p.name)
+        });
+    if let (Some(src), Some(prel)) = (&source, &ports_rel) {
+        let script = LAYOUT_SIM_TEMPLATE
+            .replace("{gds}", &gds_rel)
+            .replace("{cell}", &top)
+            .replace("{ports}", prel)
+            .replace("{source}", src)
+            .replace("{spec}", "build/sims/sparams.json");
+        gamma_core::fsutil::atomic_write(&root.join("sims/sparams.py"), script.as_bytes())?;
+        m.simulations.push(gamma_core::project::SimCfg {
+            name: "sparams".into(),
+            solver: "fdtd".into(),
+            spec: "build/sims/sparams.json".into(),
+            generator: Some("sims/sparams.py".into()),
+            device: None,
+            description: format!(
+                "Mode source at {src}; S-parameters at every port. Set up by lightsim's layout layer from the GDS, stack.toml and the port file."
+            ),
+            preview: Some(gamma_core::project::PreviewCfg {
+                mesh_scale: 1.6,
+                run_time_scale: 1.0,
+            }),
+        });
+    }
     m.layout = Some(gamma_core::project::LayoutCfg {
         gds: gds_rel,
         generator: None,
@@ -824,5 +883,24 @@ mod tests {
             .unwrap();
         assert_eq!(l2.ports.len(), 2);
         assert!(init_from_gds(&root2, None, &gds, None, None).is_err());
+        // the metadata ports are written as a neutral port file
+        let pj: Vec<gamma_core::layout::Port> = serde_json::from_str(
+            &std::fs::read_to_string(root2.join("layout/ports.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pj.len(), 2);
+        // both projects get an S-parameter simulation set up by lightsim's layout layer
+        let m = gamma_core::Project::open(&root).unwrap().manifest;
+        assert_eq!(m.simulations.len(), 1);
+        assert_eq!(
+            m.simulations[0].generator.as_deref(),
+            Some("sims/sparams.py")
+        );
+        let script = std::fs::read_to_string(root.join("sims/sparams.py")).unwrap();
+        assert!(script.contains("import lightsim.layout as ll"));
+        assert!(script.contains("SOURCE = \"in\""));
+        assert!(script.contains("PORTS = \"layout/ports.json\""));
+        assert!(script.contains("GDS = \"layout/wire.gds\""));
+        assert!(!script.contains("{cell}") && !script.contains("{source}"));
     }
 }
