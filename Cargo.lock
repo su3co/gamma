@@ -2536,7 +2536,7 @@ dependencies = [
 [[package]]
 name = "lightsim-core"
 version = "0.1.0"
-source = "git+https://github.com/su3co/lightsim?rev=4ed0d651c9b8bf96796bffb3df60040654d8220b#4ed0d651c9b8bf96796bffb3df60040654d8220b"
+source = "git+https://github.com/su3co/lightsim?rev=849fd1a1a86ad164ac8c783f82d099eba45f03e1#849fd1a1a86ad164ac8c783f82d099eba45f03e1"
 dependencies = [
  "anyhow",
  "log",
@@ -2550,7 +2550,7 @@ dependencies = [
 [[package]]
 name = "lightsim-cuda"
 version = "0.1.0"
-source = "git+https://github.com/su3co/lightsim?rev=4ed0d651c9b8bf96796bffb3df60040654d8220b#4ed0d651c9b8bf96796bffb3df60040654d8220b"
+source = "git+https://github.com/su3co/lightsim?rev=849fd1a1a86ad164ac8c783f82d099eba45f03e1#849fd1a1a86ad164ac8c783f82d099eba45f03e1"
 dependencies = [
  "anyhow",
  "cuda-core",

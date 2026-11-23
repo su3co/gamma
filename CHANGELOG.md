@@ -5,6 +5,8 @@ section is copied into the update feed and the release notes.
 
 ## [Unreleased]
 
+- lightsim pinned at 849fd1a (the release with the tool-neutral layout layer,
+  stabilised absorbing layers and the passive `Absorber` boundary).
 - `gamma init --gds` adds an S-parameter simulation, `sims/sparams.py`, set
   up by lightsim's tool-neutral layout layer (`lightsim.layout.simulation`)
   from the GDS, `stack.toml` and the port file; ports read from gdsfactory

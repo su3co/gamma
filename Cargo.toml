@@ -32,8 +32,8 @@ gamma-sim = { path = "crates/gamma-sim" }
 gamma-quantum = { path = "crates/gamma-quantum" }
 gamma-render = { path = "crates/gamma-render" }
 gamma-hub = { path = "crates/gamma-hub" }
-lightsim-core = { git = "https://github.com/su3co/lightsim", rev = "4ed0d651c9b8bf96796bffb3df60040654d8220b" }
-lightsim-cuda = { git = "https://github.com/su3co/lightsim", rev = "4ed0d651c9b8bf96796bffb3df60040654d8220b" }
+lightsim-core = { git = "https://github.com/su3co/lightsim", rev = "849fd1a1a86ad164ac8c783f82d099eba45f03e1" }
+lightsim-cuda = { git = "https://github.com/su3co/lightsim", rev = "849fd1a1a86ad164ac8c783f82d099eba45f03e1" }
 cuda-core = { git = "https://github.com/NVIDIA/cuda-rust.git", rev = "8046b9e9d696d5ea8e7c068d73061bf8b9b64f64" }
 num-complex = "0.4"
 serde = { version = "1", features = ["derive"] }

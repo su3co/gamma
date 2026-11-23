@@ -24,4 +24,4 @@ pub use lightsim_core;
 pub use lightsim_core::Simulation;
 
 /// Version of lightsim gamma is built with (the pinned git revision).
-pub const LIGHTSIM_REV: &str = "4ed0d651c9b8bf96796bffb3df60040654d8220b";
+pub const LIGHTSIM_REV: &str = "849fd1a1a86ad164ac8c783f82d099eba45f03e1";
