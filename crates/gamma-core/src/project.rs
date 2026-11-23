@@ -122,6 +122,10 @@ pub struct RemoteCfg {
     /// Folder on the host where jobs are staged; default `~/.cache/gamma/jobs`.
     #[serde(default)]
     pub workdir: Option<String>,
+    /// The launcher makes only the GPUs it grants visible to the job
+    /// (`CUDA_VISIBLE_DEVICES`), so the worker numbers them from `cuda:0`.
+    #[serde(default)]
+    pub renumber_gpus: bool,
 }
 
 /// An opened project: its root folder and manifest.

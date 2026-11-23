@@ -386,15 +386,36 @@ impl Jobs {
         self.log_line(jid, ps, format!("staging the spec on {}", h.name));
         remote::put(h, spec, &format!("{wd}/spec.json")).await?;
         let prog = remote::program(h);
+        // `cuda:any` lets the launcher pick a free card; with `renumber_gpus`
+        // the cards the launcher grants are cuda:0.. inside the job
+        let requested = job.device.strip_prefix("cuda:").unwrap_or("").to_string();
+        let worker_device =
+            if job.device.starts_with("cuda") && (h.renumber_gpus || requested == "any") {
+                let k = if requested == "any" || requested.is_empty() {
+                    1
+                } else {
+                    requested.split(',').count()
+                };
+                format!(
+                    "cuda:{}",
+                    (0..k).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+                )
+            } else {
+                job.device.clone()
+            };
         let worker_cmd = format!(
             "{} worker run {} --device {} --slice {} --every 1 --out {}",
             remote::sh_quote(&prog),
             remote::sh_quote(&format!("{wd}/spec.json")),
-            remote::sh_quote(&job.device),
+            remote::sh_quote(&worker_device),
             remote::sh_quote(slice),
             remote::sh_quote(&format!("{wd}/results.json"))
         );
-        let gpus = job.device.strip_prefix("cuda:").unwrap_or("0").to_string();
+        let gpus = if requested.is_empty() {
+            "0".to_string()
+        } else {
+            requested.clone()
+        };
         let label = format!("gamma {} {}", job.sim, job.run_id);
         let cmd = match &h.launcher {
             Some(l) if l.contains("{host}") => {

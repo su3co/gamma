@@ -31,6 +31,7 @@ entries too).
 | `program` | Path of gamma on the host (default `~/.local/share/gamma/bin/gamma`) |
 | `workdir` | Where specs and results are staged (default `~/.cache/gamma/jobs`) |
 | `launcher` | Optional command put in front of the worker: a job queue |
+| `renumber_gpus` | The launcher exposes only the granted GPUs, numbered from `cuda:0` |
 
 ### Job queues
 
@@ -51,6 +52,12 @@ gamma remote add gpu gpu-server --launcher "my-queue run {host} --gpus {gpus} --
 
 The worker command is handed to it as `bash -c '<worker command>'`. Exit code
 75 from a launcher is reported as "host busy".
+
+Queues that make only the granted cards visible to the job
+(`CUDA_VISIBLE_DEVICES`) number them from `cuda:0` inside it: add the host
+with `--renumber-gpus`, and gamma asks the queue for the card you chose
+(`{gpus}` = 1 for `cuda:1`) while the worker uses `cuda:0`. `--device
+cuda:any` asks the queue for whichever card is free first (`{gpus}` = `any`).
 
 ## Running
 

@@ -168,6 +168,9 @@ enum RemoteCmd {
         /// Path of gamma on the host
         #[arg(long)]
         program: Option<String>,
+        /// The launcher exposes only the GPUs it grants (they are cuda:0.. inside the job)
+        #[arg(long)]
+        renumber_gpus: bool,
     },
     List,
     Remove {
@@ -692,11 +695,12 @@ fn project_command(cli: &Cli) -> Result<()> {
                 ssh,
                 launcher,
                 program,
+                renumber_gpus,
             } => print(
                 cli,
                 &c.post(
                     "/api/remotes",
-                    json!({"name": name, "ssh": ssh, "launcher": launcher, "program": program}),
+                    json!({"name": name, "ssh": ssh, "launcher": launcher, "program": program, "renumber_gpus": renumber_gpus}),
                 )?,
                 |v| format!("added remote {}", v["name"].as_str().unwrap_or("")),
             ),

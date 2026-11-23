@@ -17,6 +17,14 @@ ROOT=$PWD
 TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
 TARGET=${CARGO_TARGET_DIR:-target}
 
+# refuse to start when the disk is nearly full (other builds share it)
+NEED_GB=${GAMMA_MIN_FREE_GB:-4}
+FREE_KB=$(df -Pk . | awk 'NR==2 {print $4}')
+if [ "$FREE_KB" -lt $((NEED_GB * 1024 * 1024)) ]; then
+  echo "error: only $((FREE_KB / 1024 / 1024)) GB free here; packaging needs about ${NEED_GB} GB (set GAMMA_MIN_FREE_GB to change)" >&2
+  exit 1
+fi
+
 echo "== interface"
 (cd app/ui && npm ci --no-audit --no-fund >/dev/null && npm run build >/dev/null)
 
