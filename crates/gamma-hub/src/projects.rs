@@ -141,6 +141,11 @@ impl ProjectState {
         }
         let p = self.snapshot();
         let cfg = p.sim(name)?;
+        gamma_sim::solvers::require(if cfg.solver.is_empty() {
+            "fdtd"
+        } else {
+            &cfg.solver
+        })?;
         let path = p.path(&cfg.spec);
         if !path.is_file() {
             bail!(
@@ -541,6 +546,137 @@ pub fn init_project(root: &Path, name: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Create a project around a plain GDS file (any design tool): the GDS is
+/// copied to `layout/`, the stack is copied or the generic SOI stack written,
+/// and ports come from a ports file (JSON or CSV) or from gdsfactory metadata
+/// in the GDS.
+pub fn init_from_gds(
+    root: &Path,
+    name: Option<&str>,
+    gds: &Path,
+    stack: Option<&Path>,
+    ports: Option<&Path>,
+) -> Result<()> {
+    if root.join(gamma_core::project::MANIFEST).exists() {
+        bail!("{} already has a gamma.toml", root.display());
+    }
+    let lib = gamma_core::gds::Library::read(gds)?;
+    let top = lib
+        .top_cells()
+        .first()
+        .map(|s| s.to_string())
+        .context("the GDS file has no top cell")?;
+    std::fs::create_dir_all(root.join("layout"))?;
+    let gname = gds
+        .file_name()
+        .context("GDS file name")?
+        .to_string_lossy()
+        .to_string();
+    let gds_rel = format!("layout/{gname}");
+    if gds.canonicalize()? != root.join(&gds_rel).canonicalize().unwrap_or_default() {
+        std::fs::copy(gds, root.join(&gds_rel))?;
+    }
+    let ports_rel = match ports {
+        Some(p) => {
+            let text = std::fs::read_to_string(p)?;
+            let list = gamma_core::layout::parse_ports(&text)
+                .with_context(|| format!("reading ports from {}", p.display()))?;
+            let rel = "layout/ports.json".to_string();
+            gamma_core::fsutil::atomic_write(
+                &root.join(&rel),
+                serde_json::to_string_pretty(&list)?.as_bytes(),
+            )?;
+            Some(rel)
+        }
+        None => None,
+    };
+    let st = root.join("stack.toml");
+    match stack {
+        Some(s) => {
+            gamma_core::Stack::load(s)?;
+            std::fs::copy(s, &st)?;
+        }
+        None => {
+            gamma_core::fsutil::atomic_write(&st, gamma_core::Stack::soi220().to_toml().as_bytes())?
+        }
+    }
+    let name = name.map(|s| s.to_string()).unwrap_or_else(|| {
+        gds.file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or(top.clone())
+    });
+    let mut m = gamma_core::Manifest::new(&name);
+    m.layout = Some(gamma_core::project::LayoutCfg {
+        gds: gds_rel,
+        generator: None,
+        ports: ports_rel,
+        top: Some(top),
+        stack: "stack.toml".into(),
+    });
+    gamma_core::fsutil::atomic_write(
+        &root.join(gamma_core::project::MANIFEST),
+        toml::to_string_pretty(&m)?.as_bytes(),
+    )?;
+    for d in ["sims", "results"] {
+        std::fs::create_dir_all(root.join(d))?;
+    }
+    if !root.join(".gitignore").exists() {
+        std::fs::write(
+            root.join(".gitignore"),
+            gamma_core::project::PROJECT_GITIGNORE,
+        )?;
+    }
+    if crate::git::available() {
+        crate::git::init(root)?;
+    }
+    Ok(())
+}
+
+/// Write a run's S-parameters in a neutral format next to its results.
+pub fn export_sparams(
+    ps: &ProjectState,
+    sim: &str,
+    run: &str,
+    format: &str,
+) -> Result<(PathBuf, String)> {
+    let spec = ps.run_spec(sim, run)?;
+    let dir = ps.run_dir(sim, run)?;
+    let l = gamma_sim::results::Loaded::read(&dir.join("results.json"), &spec)?;
+    let sp = gamma_sim::results::sparams(&l)?
+        .context("this run has no S-parameters (it needs one mode source and mode monitors)")?;
+    let mut sides = std::collections::BTreeMap::new();
+    if let Ok(Some(layout)) = ps.layout() {
+        for p in &layout.ports {
+            let o = p.orientation.rem_euclid(360.0);
+            let side = if !(45.0..315.0).contains(&o) {
+                "RIGHT"
+            } else if o < 135.0 {
+                "TOP"
+            } else if o < 225.0 {
+                "LEFT"
+            } else {
+                "BOTTOM"
+            };
+            sides.insert(p.name.clone(), side);
+        }
+    }
+    let n = gamma_sim::export::ports(&sp).len();
+    let (file, text) = match format {
+        "touchstone" | "s-parameters" | "snp" => (
+            format!("{sim}.s{n}p"),
+            gamma_sim::export::touchstone(&sp, &format!("{sim} run {run}")),
+        ),
+        "lumerical" | "interconnect" | "dat" => (
+            format!("{sim}.dat"),
+            gamma_sim::export::lumerical(&sp, &sides),
+        ),
+        other => bail!("unknown format '{other}': touchstone or lumerical"),
+    };
+    let path = dir.join(file);
+    gamma_core::fsutil::atomic_write(&path, text.as_bytes())?;
+    Ok((path, text))
+}
+
 /// Compare checkpoint `a` with checkpoint `b` (or the working state).
 pub fn diff_checkpoints(ps: &ProjectState, a: u32, b: Option<u32>) -> Result<Value> {
     let root = ps.root();
@@ -620,4 +756,45 @@ pub fn diff_checkpoints(ps: &ProjectState, a: u32, b: Option<u32>) -> Result<Val
     Ok(
         json!({"a": ca, "b": cb, "files": files, "layout": layout, "results": results, "layout_note": if la.is_none() { "the layout of the first checkpoint was not kept on this machine" } else { "" }}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_from_plain_gds_with_csv_ports() {
+        let d = tempfile::tempdir().unwrap();
+        let gds = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/wire/build/wire.gds");
+        let ports = d.path().join("ports.csv");
+        std::fs::write(
+            &ports,
+            "name,x,y,width,orientation\nin,0,0,0.45,180\nout,5,0,0.45,0\n",
+        )
+        .unwrap();
+        let root = d.path().join("p");
+        std::fs::create_dir_all(&root).unwrap();
+        init_from_gds(&root, Some("Wire"), &gds, None, Some(&ports)).unwrap();
+        let p = gamma_core::Project::open(&root).unwrap();
+        let l = gamma_core::Layout::of_project(&p).unwrap().unwrap();
+        assert_eq!(
+            l.ports.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            vec!["in", "out"]
+        );
+        assert!(
+            !std::fs::read_to_string(root.join("gamma.toml"))
+                .unwrap()
+                .contains("simulation = []")
+        );
+        // without a ports file, the gdsfactory metadata in the GDS gives the ports
+        let root2 = d.path().join("q");
+        std::fs::create_dir_all(&root2).unwrap();
+        init_from_gds(&root2, None, &gds, None, None).unwrap();
+        let l2 = gamma_core::Layout::of_project(&gamma_core::Project::open(&root2).unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(l2.ports.len(), 2);
+        assert!(init_from_gds(&root2, None, &gds, None, None).is_err());
+    }
 }

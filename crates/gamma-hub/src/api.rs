@@ -149,6 +149,7 @@ pub fn router(hub: Hub) -> Router {
         .route("/api/p/{id}/sims/{name}/run", post(sim_run))
         .route("/api/p/{id}/runs", get(runs))
         .route("/api/p/{id}/runs/{sim}/{run}/{what}", get(run_view))
+        .route("/api/p/{id}/runs/{sim}/{run}/export", post(run_export))
         .route("/api/p/{id}/check", get(check))
         .route("/api/p/{id}/render", get(render))
         .route(
@@ -228,12 +229,29 @@ async fn open(State(hub): State<Hub>, Json(r): Json<OpenReq>) -> R<Json<Value>> 
 struct InitReq {
     path: String,
     name: Option<String>,
+    /// Start from a plain GDS file (any design tool), with an optional stack and ports file.
+    gds: Option<String>,
+    stack: Option<String>,
+    ports: Option<String>,
 }
 
 async fn init(State(hub): State<Hub>, Json(r): Json<InitReq>) -> R<Json<Value>> {
     let root = std::path::PathBuf::from(&r.path);
     let root2 = root.clone();
-    blocking(move || crate::projects::init_project(&root2, r.name.as_deref())).await?;
+    blocking(move || match &r.gds {
+        Some(g) => {
+            std::fs::create_dir_all(&root2)?;
+            crate::projects::init_from_gds(
+                &root2,
+                r.name.as_deref(),
+                std::path::Path::new(g),
+                r.stack.as_deref().map(std::path::Path::new),
+                r.ports.as_deref().map(std::path::Path::new),
+            )
+        }
+        None => crate::projects::init_project(&root2, r.name.as_deref()),
+    })
+    .await?;
     let ps = hub.open(&root)?;
     Ok(Json(ps.info()))
 }
@@ -592,7 +610,7 @@ async fn sims(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> 
         .manifest
         .simulations
         .iter()
-        .map(|s| json!({"name": s.name, "spec": s.spec, "generator": s.generator, "device": s.device, "description": s.description, "built": p.path(&s.spec).is_file(), "preview": s.preview.is_some()}))
+        .map(|s| json!({"name": s.name, "solver": if s.solver.is_empty() { "fdtd" } else { s.solver.as_str() }, "spec": s.spec, "generator": s.generator, "device": s.device, "description": s.description, "built": p.path(&s.spec).is_file(), "preview": s.preview.is_some()}))
         .collect();
     Ok(Json(json!(v)))
 }
@@ -812,6 +830,35 @@ async fn run_view(
         }))
     })
     .await
+}
+
+#[derive(Deserialize)]
+struct ExportReq {
+    #[serde(default = "touchstone")]
+    format: String,
+}
+fn touchstone() -> String {
+    "touchstone".into()
+}
+
+async fn run_export(
+    State(hub): State<Hub>,
+    Path((id, sim, run)): Path<(String, String, String)>,
+    headers: HeaderMap,
+    Json(r): Json<ExportReq>,
+) -> R<Json<Value>> {
+    let ps = proj(&hub, &id)?;
+    let a = actor(&headers);
+    let ps2 = ps.clone();
+    let (path, text) =
+        blocking(move || crate::projects::export_sparams(&ps2, &sim, &run, &r.format)).await?;
+    let rel = path
+        .strip_prefix(ps.root())
+        .unwrap_or(&path)
+        .to_string_lossy()
+        .to_string();
+    ps.log.push(&a, "results.exported", json!({"path": rel}));
+    Ok(Json(json!({"path": rel, "text": text})))
 }
 
 async fn check(State(hub): State<Hub>, Path(id): Path<String>) -> R<Json<Value>> {

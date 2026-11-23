@@ -141,6 +141,7 @@ export class SetupView {
     const wl = s.wavelengths ? `${fmt(s.wavelengths[0] * 1e9, 1)}–${fmt(s.wavelengths[1] * 1e9, 1)} nm` : "–";
     this.side.replaceChildren(
       el("h4", {}, `${s.name}${this.preview ? " · preview" : ""}`),
+      el("p", { class: "muted small", style: { margin: "-4px 0 6px" } }, `${(store.sims.find((x) => x.name === store.sim)?.solver ?? "fdtd").toUpperCase()} · lightsim`),
       el("dl", { class: "kv" },
         el("dt", {}, "Grid"), el("dd", {}, `${g.n[0]} × ${g.n[1]} × ${g.n[2]}`),
         el("dt", {}, "Cells"), el("dd", {}, `${fmt(g.cells / 1e6, 2)} M`),

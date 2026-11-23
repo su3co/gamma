@@ -477,6 +477,10 @@ pub struct Picked {
 /// Ports JSON: a list of ports, or `{"ports": [...]}`; gdsfactory-style
 /// `center: [x, y]` is accepted too.
 pub fn parse_ports(text: &str) -> Result<Vec<Port>> {
+    let t = text.trim_start();
+    if !(t.starts_with('[') || t.starts_with('{')) {
+        return parse_ports_csv(text);
+    }
     let v: serde_json::Value = serde_json::from_str(text)?;
     let list = v.get("ports").cloned().unwrap_or(v);
     let arr = list.as_array().context("expected a list of ports")?;
@@ -488,6 +492,55 @@ pub fn parse_ports(text: &str) -> Result<Vec<Port>> {
             p["y"] = c[1].clone();
         }
         out.push(serde_json::from_value::<Port>(p)?);
+    }
+    Ok(out)
+}
+
+/// Ports as CSV: a header naming `name,x,y` and optionally `width`,
+/// `orientation` (degrees), `layer`, `datatype` (µm), any column order.
+pub fn parse_ports_csv(text: &str) -> Result<Vec<Port>> {
+    let mut lines = text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'));
+    let header: Vec<String> = lines
+        .next()
+        .context("empty ports file")?
+        .split(',')
+        .map(|h| h.trim().to_ascii_lowercase())
+        .collect();
+    let col = |n: &str| header.iter().position(|h| h == n);
+    let (Some(ci), Some(cx), Some(cy)) = (col("name"), col("x"), col("y")) else {
+        bail!("a ports CSV needs columns name, x, y")
+    };
+    let mut out = vec![];
+    for (k, l) in lines.enumerate() {
+        let f: Vec<&str> = l.split(',').map(|s| s.trim()).collect();
+        let num = |c: Option<usize>| -> Result<f64> {
+            c.and_then(|i| f.get(i))
+                .map(|v| {
+                    v.parse::<f64>()
+                        .with_context(|| format!("line {}: '{v}' is not a number", k + 2))
+                })
+                .unwrap_or(Ok(0.0))
+        };
+        let layer = match (col("layer"), col("datatype")) {
+            (Some(a), b) => Some([
+                f.get(a).and_then(|v| v.parse().ok()).unwrap_or(0),
+                b.and_then(|i| f.get(i))
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+            ]),
+            _ => None,
+        };
+        out.push(Port {
+            name: f.get(ci).context("missing name")?.to_string(),
+            x: num(Some(cx))?,
+            y: num(Some(cy))?,
+            width: num(col("width"))?,
+            orientation: num(col("orientation"))?,
+            layer,
+        });
     }
     Ok(out)
 }
@@ -675,6 +728,15 @@ mod tests {
 
 #[cfg(test)]
 mod kfactory_tests {
+    #[test]
+    fn ports_csv() {
+        let p = super::parse_ports("name,x,y,width,orientation,layer,datatype\no1,-10,0,0.5,180,1,0\no2, 15.5 ,0.625,0.5,0,1,0\n").unwrap();
+        assert_eq!(p.len(), 2);
+        assert_eq!(p[1].x, 15.5);
+        assert_eq!(p[0].layer, Some([1, 0]));
+        assert!(super::parse_ports("x,y\n1,2\n").is_err());
+    }
+
     #[test]
     fn ports_from_gdsfactory_gds() {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

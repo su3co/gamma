@@ -4,7 +4,7 @@ import { store } from "../lib/store";
 import { b64f32, enc } from "../lib/api";
 import { MapView, Plot, canvasFromImageData } from "../lib/plot";
 import { paintMap } from "../lib/colormap";
-import { el, fmt, fmtTime } from "../lib/util";
+import { el, fmt, fmtTime, toast } from "../lib/util";
 
 export class ResultsView {
   root = el("div", { class: "page" });
@@ -61,7 +61,11 @@ export class ResultsView {
       grid.append(el("div", { class: "figure", style: { height: "auto", padding: "30px 14px 12px" } }, el("div", { class: "cap" }, `At ${fmt(x[mid], 1)} nm`),
         el("table", { class: "data" }, el("tr", {}, el("th", {}, "Entry"), el("th", {}, "|S|²"), el("th", {}, "dB"), el("th", {}, "phase (rad)")),
           ...sp.entries.map((e: any) => el("tr", {}, el("td", { class: "mono" }, e.name), el("td", { class: "num" }, fmt(e.abs2[mid], 4)), el("td", { class: "num" }, fmt(e.db[mid], 2)), el("td", { class: "num" }, fmt(e.phase[mid], 3))))),
-        el("p", { class: "muted small serif" }, sp.note)));
+        el("p", { class: "muted small serif" }, sp.note),
+        el("div", { class: "actions" }, el("span", { class: "muted small" }, "Export"),
+          ...[["touchstone", "Touchstone"], ["lumerical", "Lumerical text"]].map(([f, label]) => el("button", { class: "link", onclick: async () => {
+            try { const r = await store.hub.post(`${base}/export`, { format: f }); toast(`Wrote ${r.path}`, "ok", 6000); } catch (e: any) { toast(e.message, "err"); }
+          } }, label)))));
     }
     for (const m of o.monitors) {
       if (m.views.includes("field_map")) await this.fieldFigure(grid, base, m.name);

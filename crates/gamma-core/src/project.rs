@@ -13,11 +13,11 @@ pub struct Manifest {
     pub python: PythonCfg,
     #[serde(default)]
     pub layout: Option<LayoutCfg>,
-    #[serde(default, rename = "simulation")]
+    #[serde(default, rename = "simulation", skip_serializing_if = "Vec::is_empty")]
     pub simulations: Vec<SimCfg>,
-    #[serde(default, rename = "circuit")]
+    #[serde(default, rename = "circuit", skip_serializing_if = "Vec::is_empty")]
     pub circuits: Vec<CircuitCfg>,
-    #[serde(default, rename = "remote")]
+    #[serde(default, rename = "remote", skip_serializing_if = "Vec::is_empty")]
     pub remotes: Vec<RemoteCfg>,
 }
 
@@ -72,6 +72,9 @@ fn default_stack() -> String {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SimCfg {
     pub name: String,
+    /// Solver: `fdtd` (lightsim FDTD, the default); see gamma_sim::solvers.
+    #[serde(default = "fdtd")]
+    pub solver: String,
     /// lightsim simulation file.
     pub spec: String,
     /// Script that writes the spec.
@@ -85,6 +88,10 @@ pub struct SimCfg {
     /// Coarse variant for quick runs.
     #[serde(default)]
     pub preview: Option<PreviewCfg>,
+}
+
+fn fdtd() -> String {
+    "fdtd".into()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

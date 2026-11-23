@@ -64,6 +64,27 @@ preview and compare the splitting with the previous checkpoint."* The agent
 edits `layout/mmi.py`, the views follow, it runs the simulation, and the end
 of its turn is a checkpoint you can compare in History.
 
+## Start from a GDS file
+
+gamma does not need gdsfactory: any tool that writes GDS will do.
+
+```bash
+gamma init my-chip --gds chip.gds --stack stack.toml --ports ports.csv
+cd my-chip && gamma open
+```
+
+- `--stack`: a `stack.toml` (layers with GDS layer/datatype, z range,
+  material, design rules); without it gamma writes a generic 220 nm SOI stack
+  to edit.
+- `--ports`: a CSV with a header `name,x,y,width,orientation` (µm, degrees;
+  optional `layer,datatype`) or a JSON list; without it gamma reads the ports
+  gdsfactory stores in the GDS, if any.
+
+Simulations are lightsim JSON files (`[[simulation]] spec = ...`), written by
+hand, by lightsim's Python API, or by any script. Results export with
+`gamma export <sim> --format touchstone` (`.sNp`) or `--format lumerical`
+(INTERCONNECT `.dat`).
+
 ## The lightsim examples
 
 The worked examples published with lightsim (Mach–Zehnder modulator, ring

@@ -28,6 +28,7 @@ All three talk to the same hub, so the views follow whichever is working.
 | `sim_list`, `sim_setup` | Simulations; grid, media, sources, monitors and estimates per device |
 | `sim_run`, `job_status`, `job_cancel` | Run on the CPU, local GPUs or a remote host; follow and cancel |
 | `results` | Overview, S-parameters, spectra, time series, decay, field statistics |
+| `export_sparams` | Touchstone or Lumerical-text S-parameters next to a run's results |
 | `check` | Design rules and consistency checks |
 | `view_render` | Any view as an image: layout, 3d, setup, field, live, spectrum, sparams, decay, time |
 | `selection_get` | What the person selected |

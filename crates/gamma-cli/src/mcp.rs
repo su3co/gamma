@@ -381,6 +381,15 @@ impl Server {
                 v["run"] = json!(run);
                 jtext(&v)
             }
+            "export_sparams" => {
+                let sim = args["sim"].as_str().context("sim required")?;
+                let run = match args["run"].as_str() {
+                    Some(r) => r.to_string(),
+                    None => self.latest_run(sim)?,
+                };
+                let v = c.post(&self.p(&format!("/runs/{}/{}/export", enc(sim), enc(&run))), json!({"format": args["format"].as_str().unwrap_or("touchstone")}))?;
+                text(format!("wrote {}", v["path"].as_str().unwrap_or("")))
+            }
             "check" => jtext(&c.get(&self.p("/check"))?),
             "view_render" => {
                 let view = args["view"].as_str().unwrap_or("layout");

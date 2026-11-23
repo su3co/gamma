@@ -226,6 +226,42 @@ once a second. The runner drives lightsim's backend step by step through the
 public `Backend` trait (one slab); multi-GPU runs use lightsim's own
 multi-slab driver without live slices until lightsim's run hook is released.
 
+## 5a. Independent of any one design tool
+
+gamma and lightsim do not depend on gdsfactory: it is one way to make a
+layout among several. A project can start from a plain GDS file made by any
+tool plus a layer-stack file (`gamma init --gds layout.gds --stack stack.toml
+--ports ports.csv`); ports come from a neutral ports file (JSON, or CSV with
+`name,x,y,width,orientation,layer,datatype`) or, when present, from the
+gdsfactory metadata in the GDS. Results leave gamma in neutral formats:
+S-parameters as Touchstone (`.sNp`) and as Lumerical INTERCONNECT text
+(`.dat`), from the results view, `gamma export` or the `export_sparams` tool.
+
+lightsim is gaining its own tool-neutral layer (GDS/OASIS in with a
+technology and port description, Touchstone and Lumerical-text S-parameters
+out). When it exists gamma will call it for what it does not do itself
+today: OASIS import, building a simulation spec with mode ports directly from
+GDS + technology + ports (no Python script), and reading the technology
+format as an alternative to `stack.toml`. What gamma needs from it: a CLI or
+Python entry point `GDS/OASIS + technology + ports -> lightsim spec`, stable
+documented file formats for the technology and port descriptions, and the
+same S-parameter writers (gamma's own Rust writers stay as the default).
+KLayout (with SiEPIC), circuit-simulator export and Nazca follow on the same
+neutral layer.
+
+## 5b. Solvers
+
+Each simulation names its solver (`solver = "fdtd"`, the default). gamma 0.1
+runs lightsim's FDTD solver; lightsim is adding a finite-element solver
+(heat, electrostatics, modes), eigenmode expansion, circuit simulation and a
+fixed-angle oblique-incidence mode. The registry (`gamma_sim::solvers`) lists
+each solver, whether this build can run it and which result kinds it
+produces; the hub refuses a simulation whose solver is not available with a
+clear message, and the views ask the summary and the result overview what to
+draw instead of assuming FDTD fields and S-parameters. Adding a solver means
+a set-up summary, a runner speaking the same worker stream, and result
+reducers for its kinds.
+
 ## 6. Interface
 
 Panels: the project tree (files, cells, layers, ports, simulations with

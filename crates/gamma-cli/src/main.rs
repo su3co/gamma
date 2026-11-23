@@ -52,11 +52,32 @@ enum Cmd {
         #[command(subcommand)]
         cmd: WorkerCmd,
     },
-    /// Create a project in a folder
+    /// Create a project in a folder (empty, or around a GDS file from any design tool)
     Init {
         dir: Option<PathBuf>,
         #[arg(long)]
         name: Option<String>,
+        /// Start from this GDS file (copied into layout/)
+        #[arg(long)]
+        gds: Option<PathBuf>,
+        /// Layer stack (stack.toml); default: generic 220 nm SOI
+        #[arg(long)]
+        stack: Option<PathBuf>,
+        /// Ports (JSON or CSV: name,x,y,width,orientation,layer,datatype); default: from the GDS metadata if any
+        #[arg(long)]
+        ports: Option<PathBuf>,
+    },
+    /// Export a run's S-parameters (Touchstone .sNp or Lumerical INTERCONNECT .dat)
+    Export {
+        sim: String,
+        #[arg(long)]
+        run: Option<String>,
+        /// touchstone or lumerical
+        #[arg(long, default_value = "touchstone")]
+        format: String,
+        /// Also copy the file here
+        #[arg(short, long)]
+        out: Option<PathBuf>,
     },
     /// Open a project in the hub and print its id and address
     Open { dir: Option<PathBuf> },
@@ -337,9 +358,27 @@ fn real_main(cli: &Cli) -> Result<()> {
                 Ok(())
             }
         },
-        Cmd::Init { dir, name } => {
+        Cmd::Init {
+            dir,
+            name,
+            gds,
+            stack,
+            ports,
+        } => {
             let d = dir.clone().unwrap_or(std::env::current_dir()?);
-            gamma_hub::projects::init_project(&d, name.as_deref())?;
+            match gds {
+                Some(g) => {
+                    std::fs::create_dir_all(&d)?;
+                    gamma_hub::projects::init_from_gds(
+                        &d,
+                        name.as_deref(),
+                        g,
+                        stack.as_deref(),
+                        ports.as_deref(),
+                    )?;
+                }
+                None => gamma_hub::projects::init_project(&d, name.as_deref())?,
+            }
             println!("created a gamma project in {}", d.display());
             Ok(())
         }
@@ -609,6 +648,20 @@ fn project_command(cli: &Cli) -> Result<()> {
             print(cli, &v, |v| {
                 serde_json::to_string_pretty(v).unwrap_or_default()
             });
+        }
+        Cmd::Export { sim, run, format, out } => {
+            let run = match run {
+                Some(r) => r.clone(),
+                None => {
+                    let runs = c.get(&p(&format!("/runs?sim={}", enc(sim))))?;
+                    runs.as_array().and_then(|a| a.iter().find(|r| r["has_results"] == true)).and_then(|r| r["id"].as_str().map(|s| s.to_string())).context("no finished run")?
+                }
+            };
+            let v = c.post(&p(&format!("/runs/{}/{}/export", enc(sim), enc(&run))), json!({"format": format}))?;
+            if let Some(o) = out {
+                std::fs::write(o, v["text"].as_str().unwrap_or(""))?;
+            }
+            println!("wrote {}{}", v["path"].as_str().unwrap_or(""), out.as_ref().map(|o| format!(" and {}", o.display())).unwrap_or_default());
         }
         Cmd::Check => {
             let v = c.get(&p("/check"))?;

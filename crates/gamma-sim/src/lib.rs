@@ -13,9 +13,11 @@
 
 pub mod checks;
 pub mod devices;
+pub mod export;
 pub mod results;
 pub mod runner;
 pub mod setup;
+pub mod solvers;
 pub mod stream;
 
 pub use lightsim_core;

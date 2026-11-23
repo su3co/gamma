@@ -221,6 +221,13 @@ pub struct SEntry {
     pub db: Vec<f64>,
     pub phase: Vec<f64>,
     pub abs2: Vec<f64>,
+    /// Output port, input port, and the monitor that measured the output.
+    pub output: String,
+    pub input: String,
+    pub monitor: String,
+    /// Direction of the output port's monitor relative to the device:
+    /// axis and side (+1: on the high side).
+    pub side: (usize, i8),
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -311,7 +318,12 @@ pub fn sparams(l: &Loaded) -> Result<Option<SParams>> {
                 }
             })
             .collect();
+        let side = (m.1, if m.2 > center[m.1] { 1 } else { -1 });
         entries.push(SEntry {
+            output: port(m.0),
+            input: in_port.clone(),
+            monitor: m.0.to_string(),
+            side,
             name: format!("{}@0,{}@0", port(m.0), in_port),
             db: s
                 .iter()

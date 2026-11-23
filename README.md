@@ -12,9 +12,10 @@ them.
 
 ![Results of a 1×2 MMI splitter: S-parameters and the field in the core plane](docs/img/results-dark.png)
 
-- **Projects are folders of text under git**: gdsfactory Python or YAML for
-  layout, `stack.toml` for the layer stack, lightsim JSON for simulations.
-  Nothing is locked in a binary project file.
+- **Projects are folders of text under git**: a GDS file from any design
+  tool, or gdsfactory Python or YAML, for layout; `stack.toml` for the layer
+  stack; lightsim JSON for simulations. Nothing is locked in a binary project
+  file, and S-parameters export to Touchstone and Lumerical INTERCONNECT text.
 - **Viewers**: layout (GDS layers, cells, ports, measuring), 3-D (extruded
   stack), set-up (the permittivity lightsim's own rasteriser produces on its
   own grid, mesh lines, sources, monitors, absorbing layers), run (progress,
@@ -25,7 +26,7 @@ them.
   or several), and GPU servers over SSH — design on a laptop, simulate on an
   RTX PRO 6000 or a GB10, with progress and field slices streamed back.
   Device, memory and time estimates before every run.
-- **Built for agents**: an MCP server with 28 tools (inspect layout and
+- **Built for agents**: an MCP server with 29 tools (inspect layout and
   stack, place and route gdsfactory components, set up and run simulations,
   read results, design-rule and consistency checks, render any view as an
   image), a CLI with the same verbs, skills for gdsfactory and lightsim, a
@@ -98,6 +99,16 @@ On an Apple M1 Pro the preview (1.7 M cells) takes about 50 s and gives
 |S₂₁|² = |S₃₁|² = −3.13 dB at 1550 nm. Open the same folder in the desktop
 app (or `gamma open` for a browser address) to see it. The full walk-through,
 including the lightsim examples: [docs/quickstart.md](docs/quickstart.md).
+
+## Start from any GDS file
+
+```bash
+gamma init my-chip --gds chip.gds --stack stack.toml --ports ports.csv
+```
+
+copies the layout into a new project; ports come from the CSV
+(`name,x,y,width,orientation`) or from gdsfactory metadata in the file. See
+[docs/quickstart.md](docs/quickstart.md#start-from-a-gds-file).
 
 ## Agents
 
