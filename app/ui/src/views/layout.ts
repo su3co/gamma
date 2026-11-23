@@ -27,6 +27,7 @@ export class LayoutView {
   hoverText = "";
   private drag: { x: number; y: number; cx: number; cy: number } | null = null;
   private raf = 0;
+  private meta = el("span", { class: "muted small mono", id: "layout-meta" });
 
   constructor() {
     this.root = el("div", { style: { position: "absolute", inset: "0" } });
@@ -35,7 +36,7 @@ export class LayoutView {
       el("button", { class: "link", onclick: () => this.fit(), title: "Fit (F)" }, "Fit"),
       el("button", { class: "link", id: "measure-btn", onclick: () => this.toggleMeasure(), title: "Measure (M)" }, "Measure"),
       el("button", { class: "link", onclick: () => store.hub.post(store.p("/build"), { target: "layout" }).catch(() => {}), title: "Rebuild the layout from its source" }, "Rebuild"),
-      el("span", { class: "muted small mono", id: "layout-meta" }),
+      this.meta,
     );
     this.root.append(this.canvas, this.overlay, tools);
     this.gl = this.canvas.getContext("webgl2", { antialias: true, premultipliedAlpha: false })!;
@@ -65,7 +66,7 @@ export class LayoutView {
     for (const l of this.layers) { l.bufs.forEach((b) => g.deleteBuffer(b)); g.deleteVertexArray(l.vao); g.deleteVertexArray(l.lineVao); }
     this.layers = [];
     const lay = store.layout;
-    const meta = document.getElementById("layout-meta");
+    const meta = this.meta;
     if (!lay) { this.schedule(); return; }
     if (meta) meta.textContent = `${lay.top.length > 42 ? lay.top.slice(0, 40) + "…" : lay.top} · ${lay.polygons} polygons · ${fmt(lay.bbox.max[0] - lay.bbox.min[0], 2)} × ${fmt(lay.bbox.max[1] - lay.bbox.min[1], 2)} µm`;
     const firstLoad = this.layers.length === 0 && this.view.s === 20;

@@ -68,8 +68,20 @@ export class ResultsView {
           } }, label)))));
     }
     for (const m of o.monitors) {
+      if (m.views.includes("far_field")) {
+        const ff = await store.hub.get(`${base}/farfield?monitor=${enc(m.name)}`).catch(() => null);
+        if (ff && ff.theta.length) {
+          // intensity against the polar angle, one curve per azimuth (at most four)
+          const np = ff.phi.length, picks = np <= 4 ? [...Array(np).keys()] : [0, Math.floor(np / 4), Math.floor(np / 2), Math.floor((3 * np) / 4)];
+          addPlot(`${m.name}: far field at ${fmt(299792458 / ff.freq * 1e9, 1)} nm`, {
+            x: ff.theta.map((t: number) => (t * 180) / Math.PI),
+            series: picks.map((j: number) => ({ name: `φ = ${fmt((ff.phi[j] * 180) / Math.PI, 0)}°`, y: ff.theta.map((_: number, i: number) => ff.intensity[i * np + j]) })),
+            xlabel: "θ (degrees)", ylabel: "",
+          });
+        }
+      }
       if (m.views.includes("field_map")) await this.fieldFigure(grid, base, m.name);
-      else if (m.views.includes("spectrum") && !(o.sparams && m.type === "mode")) {
+      else if (m.views.includes("spectrum") && m.type !== "far_field" && !(o.sparams && m.type === "mode")) {
         const s = await store.hub.get(`${base}/spectrum?monitor=${enc(m.name)}`).catch(() => null);
         if (s) addPlot(`${m.name} (${m.type.replace("_", " ")})`, { x: s.wavelengths.map((w: number) => w * 1e9), series: s.series.map((q: any) => ({ name: q.name, y: q.values })), xlabel: "wavelength (nm)", ylabel: "" });
       } else if (m.views.includes("time_series")) {
