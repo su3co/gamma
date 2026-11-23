@@ -7,11 +7,12 @@
 //! computed are written as 0 and a comment says which column is real. The
 //! Lumerical format lists only the entries present.
 //!
-//! Phase convention: the complex S values are written as lightsim computes
-//! them, with time dependence exp(-i ω t) (the physics convention). Tools
-//! that use exp(+j ω t) see the complex conjugate. Both files say so in a
-//! header comment where the format allows one; this will follow lightsim's
-//! own S-parameter writers once their convention per format is documented.
+//! Phase convention, the same as lightsim's own writers so either tool gives
+//! the same file: lightsim computes with time dependence exp(-i ω t).
+//! Touchstone files are written in exp(+j ω t), the convention scikit-rf,
+//! ADS and Spectre assume, so the values are the complex conjugate of
+//! lightsim's (a header comment says so). The INTERCONNECT text format uses
+//! exp(-i ω t) and is written unchanged.
 
 use crate::results::SParams;
 use lightsim_core::constants::C0;
@@ -89,13 +90,17 @@ pub fn touchstone(sp: &SParams, title: &str) -> String {
         "! computed columns (inputs): {}; other entries are 0",
         inputs.join(", ")
     );
+    let _ = writeln!(
+        out,
+        "! phase convention: exp(+j w t); values are the complex conjugate of lightsim's exp(-i w t) data"
+    );
     let _ = writeln!(out, "# Hz S RI R 50");
     for &f in &order {
         let freq = C0 / sp.wavelengths[f];
         let mut m = vec![vec![Complex64::new(0.0, 0.0); n]; n];
         for (k, e) in sp.entries.iter().enumerate() {
             if let (Some(&i), Some(&j)) = (idx.get(e.output.as_str()), idx.get(e.input.as_str())) {
-                m[i][j] = complex(sp, k, f);
+                m[i][j] = complex(sp, k, f).conj(); // exp(+j w t)
             }
         }
         let pair = |c: Complex64| format!("{:.9e} {:.9e}", c.re, c.im);
@@ -211,12 +216,15 @@ mod tests {
             .collect();
         assert!(first[0] < C0 / 1.55e-6); // ascending frequency: 1.6 um first
         assert_eq!(first.len(), 7);
-        // S21 = sqrt(0.49) e^{0.5 i} is on the second row, first pair
+        // S21 = sqrt(0.49) e^{0.5 i} in exp(-i w t) is on the second row,
+        // first pair, conjugated for Touchstone's exp(+j w t)
         let row2: Vec<f64> = data[1]
             .split_whitespace()
             .map(|x| x.parse().unwrap())
             .collect();
         assert!((row2[0] - 0.7 * 0.5f64.cos()).abs() < 1e-9);
+        assert!((row2[1] + 0.7 * 0.5f64.sin()).abs() < 1e-9);
+        assert!(t.contains("! phase convention: exp(+j w t)"));
         assert!(t.contains("# Hz S RI R 50"));
     }
 
@@ -226,5 +234,13 @@ mod tests {
         assert!(l.starts_with("[\"o1\",\"LEFT\"]\n[\"o2\",\"RIGHT\"]"));
         assert_eq!(l.matches("\"transmission\")").count(), 3);
         assert!(l.contains("(2,3)"));
+        // INTERCONNECT keeps exp(-i w t): the phase is written unchanged
+        let line = l
+            .lines()
+            .skip_while(|x| !x.starts_with("(\"o2\""))
+            .nth(2)
+            .unwrap();
+        let phase: f64 = line.split_whitespace().nth(2).unwrap().parse().unwrap();
+        assert!((phase - 0.5).abs() < 1e-9);
     }
 }

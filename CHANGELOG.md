@@ -5,6 +5,9 @@ section is copied into the update feed and the release notes.
 
 ## [Unreleased]
 
+- Touchstone files are written in exp(+jωt), the complex conjugate of
+  lightsim's exp(-iωt) data, matching lightsim's own Touchstone writer; the
+  header states it. INTERCONNECT text is unchanged.
 - Projects from a plain GDS file of any design tool with a stack and a
   ports file (CSV or JSON): `gamma init --gds`.
 - S-parameter export to Touchstone (`.sNp`) and Lumerical INTERCONNECT text.

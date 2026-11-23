@@ -236,9 +236,10 @@ tool plus a layer-stack file (`gamma init --gds layout.gds --stack stack.toml
 gdsfactory metadata in the GDS. Results leave gamma in neutral formats:
 S-parameters as Touchstone (`.sNp`) and as Lumerical INTERCONNECT text
 (`.dat`), from the results view, `gamma export` or the `export_sparams` tool.
-The complex values keep lightsim's exp(-iωt) convention (stated in the
-Touchstone header); gamma will match lightsim's writers per format once their
-convention is documented, and test both against each other.
+The phase convention matches lightsim's own writers, so a user gets the same
+file from either tool: lightsim computes in exp(-iωt); Touchstone files are
+written in exp(+jωt) (the complex conjugate, as scikit-rf, ADS and Spectre
+assume; the header says so), and the INTERCONNECT text keeps exp(-iωt).
 
 lightsim is gaining its own tool-neutral layer (GDS/OASIS in with a
 technology and port description, Touchstone and Lumerical-text S-parameters
