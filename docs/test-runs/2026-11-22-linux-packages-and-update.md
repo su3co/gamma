@@ -46,5 +46,20 @@ gamma: this version did not start properly twice; going back to 0.9.0
 ALL UPDATE CHECKS PASSED (Linux x86_64)
 ```
 
-Not run: the same on aarch64 (the AppImage builds there; the test was not
-repeated), and the apt/dnf repositories against a real package host.
+## The same on aarch64 (GB10 machine, Docker)
+
+```text
+$ gamma-app --self-update stable
+{"from":"0.9.0","to":"0.9.1","updated":true}
+== after update: 0.9.1, on probation
+$ gamma-app --rollback
+{"restored":"0.9.0"}
+== manual rollback: 0.9.0
+gamma: this version did not start properly twice; going back to 0.9.0
+== automatic rollback after failed starts: 0.9.0
+{"error":"update failed, nothing was replaced: The signature verification failed"}
+== tampered signature refused, installation unchanged
+ALL UPDATE CHECKS PASSED (Linux aarch64)
+```
+
+Not run: the apt/dnf repositories against a real package host.
