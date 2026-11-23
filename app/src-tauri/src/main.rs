@@ -65,10 +65,10 @@ fn mark_healthy() -> Result<(), String> {
 }
 
 fn main() {
-    // an update that failed to start twice is rolled back before anything else
-    update::on_start();
     let args: Vec<String> = std::env::args().collect();
     let headless = update::headless_command(&args);
+    // an update that failed to start twice is rolled back before anything else
+    update::on_start(headless.is_some());
     let windowed = headless.is_none();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())

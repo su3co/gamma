@@ -226,8 +226,10 @@ fn relaunch() -> ! {
     std::process::exit(0)
 }
 
-/// Called first thing at start-up.
-pub fn on_start() {
+/// Called first thing at start-up. A windowless command (`headless`) that
+/// triggers the rollback restores the kept version and exits without
+/// relaunching the app.
+pub fn on_start(headless: bool) {
     let mut s = load_state();
     if !s.probation {
         return;
@@ -239,6 +241,9 @@ pub fn on_start() {
             s.previous_version.clone().unwrap_or_default()
         );
         if restore().is_ok() {
+            if headless {
+                std::process::exit(0);
+            }
             relaunch();
         }
         s.probation = false;
